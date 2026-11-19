@@ -1,39 +1,60 @@
-# Forge Hello World
+# Outrider
 
-This project contains a Forge app written in Javascript that displays `Hello World!` in a Jira issue context panel. 
+> Sent ahead. Context in place.
 
-See [developer.atlassian.com/platform/forge/](https://developer.atlassian.com/platform/forge) for documentation and tutorials explaining Forge.
+An evidence-gated context engine for Jira Service Management. Outrider surfaces verified incident history, resolutions, and runbook knowledge directly in the JSM issue panel — before the agent asks.
+
+Built on Atlassian Forge for Codegeist 2026.
+
+## What it does
+
+- Adds a collapsible **Outrider** panel to every JSM issue
+- Retrieves related incidents, past resolutions, and Confluence runbooks
+- Verifies every AI-generated claim against verbatim source text (source-span verifier)
+- Drops unverifiable claims and shows a rejected-claim counter
+- Exposes the same context bundle via Rovo MCP tools for AI agents
+
+## Build status
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 1 | Scaffold with `forge create` | ✅ |
+| 2 | Minimal Forge manifest + UI Kit panel | ✅ |
+| 3 | `forge lint`, deploy, verify panel in JSM | ✅ |
+| 4 | TypeScript conversion + Confluence API verification | ✅ |
+| 5 | Rovo MCP hello-world + `get-ticket-context` | 🔜 |
+| 6–14 | Full pipeline, verifier, MCP tools, TWG, demo | 🔜 |
 
 ## Requirements
 
-See [Set up Forge](https://developer.atlassian.com/platform/forge/set-up-forge/) for instructions to get set up.
+- Node.js 18+
+- Forge CLI: `npm install -g @forge/cli`
+- Atlassian developer account
 
-## Quick start
+## Setup
 
-- Modify your app frontend by editing the `src/frontend/index.jsx` file.
-
-- Modify your app backend by editing the `src/resolvers/index.js` file to define resolver functions. See [Forge resolvers](https://developer.atlassian.com/platform/forge/runtime-reference/custom-ui-resolver/) for documentation on resolver functions.
-
-- Build and deploy your app by running:
 ```
+forge login
 forge deploy
+forge install -p Jira -s <your-site>.atlassian.net -e development
+forge install -p Confluence -s <your-site>.atlassian.net -e development
 ```
 
-- Install your app in an Atlassian site by running:
+**Note:** After adding new scopes, run `forge install --upgrade` separately for each product (Jira and Confluence appear as separate rows).
+
+## Development
+
 ```
-forge install
+forge deploy              # deploy changes
+forge logs                # tail runtime logs
+forge install --upgrade   # apply new scopes to existing installs
 ```
 
-- Develop your app by running `forge tunnel` to proxy invocations locally:
+## Architecture
+
 ```
-forge tunnel
+Jira event → Queue → Consumer → ContextBundle → JSM Panel
+                                              → Rovo MCP tools
 ```
 
-### Notes
-- Use the `forge deploy` command when you want to persist code changes.
-- Use the `forge install` command when you want to install the app on a new site.
-- Once the app is installed on a site, the site picks up the new app changes you deploy without needing to rerun the install command.
-
-## Support
-
-See [Get help](https://developer.atlassian.com/platform/forge/get-help/) for how to get help and provide feedback.
+See `docs/spec.md` for the full product and technical specification.
