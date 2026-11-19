@@ -1,0 +1,22 @@
+modules:
+  jira:issueContext:
+    - key: outrider-hello-world-issue-context
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: outrider
+      description: A hello world issue context.
+      label: Hello World!
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: main
+    path: src/frontend/index.jsx
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/91f15c4b-555e-4db0-99e1-7567c801fc07
