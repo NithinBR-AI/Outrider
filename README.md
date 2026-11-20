@@ -83,4 +83,3 @@ Jira event → Queue → Consumer → ContextBundle → JSM Panel
                                               → Rovo MCP tools
 ```
 
-See `docs/spec.md` for the full product and technical specification.
