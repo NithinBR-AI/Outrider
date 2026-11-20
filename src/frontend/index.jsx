@@ -19,6 +19,23 @@ function formatDate(iso) {
 
 const Freshness = ({ label, iso }) => <Text size="small" color="color.text.subtlest">{label} {formatDate(iso)}</Text>;
 
+// Relevance indicator (spec §17.2): a simple visual weight, never the numeric score.
+// relevance is the 0..1 match strength stored on each item.
+const STRONG_MATCH = 0.5;
+const GOOD_MATCH = 0.3;
+function matchLabel(relevance) {
+  if (typeof relevance !== 'number') return null;
+  if (relevance >= STRONG_MATCH) return 'Strong match';
+  if (relevance >= GOOD_MATCH) return 'Good match';
+  return 'Partial match';
+}
+
+// One line under each item: relevance and freshness, e.g. "Strong match · Started 20/11/2026, 6:23 pm".
+const ItemMeta = ({ relevance, label, iso }) => {
+  const match = matchLabel(relevance);
+  return <Text size="small" color="color.text.subtlest">{match ? `${match} · ` : ''}{label} {formatDate(iso)}</Text>;
+};
+
 const IncidentItem = ({ incident }) => (
   <Box paddingBlock="space.100">
     <Stack space="space.050">
@@ -27,7 +44,7 @@ const IncidentItem = ({ incident }) => (
         <Link href={incident.source.url} openNewTab>{incident.source.id}: {incident.source.title}</Link>
       </Inline>
       {incident.summary ? <Text>{incident.summary}</Text> : null}
-      <Freshness label="Started" iso={incident.startedAt ?? incident.source.updatedAt} />
+      <ItemMeta relevance={incident.relevance} label="Started" iso={incident.startedAt ?? incident.source.updatedAt} />
     </Stack>
   </Box>
 );
@@ -40,7 +57,7 @@ const ResolutionItem = ({ resolution }) => (
         <Link href={resolution.source.url} openNewTab>{resolution.source.id}: {resolution.source.title}</Link>
       </Inline>
       <Text>{resolution.resolutionText}</Text>
-      <Freshness label="Resolved" iso={resolution.resolvedAt} />
+      <ItemMeta relevance={resolution.relevance} label="Resolved" iso={resolution.resolvedAt} />
     </Stack>
   </Box>
 );

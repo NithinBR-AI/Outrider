@@ -31,7 +31,7 @@ vi.mock('@forge/api', () => ({
   },
 }));
 
-import { getTicket, MAX_SECTION_ITEMS, searchIncidents, searchResolutions, SOURCE_PROJECTS } from '../jira';
+import { getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, SOURCE_PROJECTS } from '../jira';
 
 const comments = fixture.comments as Record<string, unknown>;
 
@@ -124,12 +124,35 @@ describe('searchIncidents (demo site ITS-6265)', () => {
 
   it('drops cancelled incidents and caps the section size', async () => {
     const base = fixture.incidentSearch.issues.find((i: { key: string }) => i.key === 'ITO-9647');
-    const many = Array.from({ length: 8 }, (_, n) => ({ ...base, key: `ITO-${100 + n}`, id: String(100 + n) }));
+    const many = Array.from({ length: MAX_SECTION_CANDIDATES + 3 }, (_, n) => ({ ...base, key: `ITO-${100 + n}`, id: String(100 + n) }));
     const cancelled = { ...base, key: 'ITO-999', fields: { ...base.fields, status: { name: 'Cancelled', statusCategory: { key: 'done' } } } };
     mock.handler = (path) => (path.startsWith('/rest/api/3/search/jql') ? { status: 200, json: { issues: [cancelled, ...many] } } : demoSite()(path));
     const incidents = await searchIncidents(await getTicket('ITS-6265'));
-    expect(incidents).toHaveLength(MAX_SECTION_ITEMS);
+    expect(incidents).toHaveLength(MAX_SECTION_CANDIDATES);
     expect(incidents.map((i) => i.source.id)).not.toContain('ITO-999');
+  });
+
+  it('attaches a 0..1 relevance to every incident', async () => {
+    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    for (const i of incidents) {
+      expect(i.relevance).toBeGreaterThan(0);
+      expect(i.relevance).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('ranks an active incident above a resolved one with the same text (status term, spec §9.3)', async () => {
+    const base = fixture.incidentSearch.issues.find((i: { key: string }) => i.key === 'ITO-9647');
+    const resolved = { ...base, key: 'ITO-1', fields: { ...base.fields, status: { name: 'Completed', statusCategory: { key: 'done' } } } };
+    const active = { ...base, key: 'ITO-2' };
+    mock.handler = (path) => (path.startsWith('/rest/api/3/search/jql') ? { status: 200, json: { issues: [resolved, active] } } : demoSite()(path));
+    const ids = (await searchIncidents(await getTicket('ITS-6265'), new Date('2026-11-21T00:00:00Z'))).map((i) => i.source.id);
+    expect(ids).toEqual(['ITO-2', 'ITO-1']);
+  });
+
+  it('is deterministic for a fixed clock', async () => {
+    const t = await getTicket('ITS-6265');
+    const now = new Date('2026-11-21T00:00:00Z');
+    expect(await searchIncidents(t, now)).toEqual(await searchIncidents(t, now));
   });
 
   it('keeps stored excerpts short', async () => {
@@ -152,6 +175,12 @@ describe('searchResolutions (demo site ITS-6265)', () => {
     expect(ssl!.matchReason).toBe('both');
     expect(ssl!.resolutionText.startsWith('Root cause: SSL certificate on auth-lb-01 expired')).toBe(true);
     expect(ssl!.resolvedAt).toBeTruthy();
+  });
+
+  it('attaches the match strength as relevance', async () => {
+    const ssl = (await searchResolutions(await getTicket('ITS-6265'))).find((r) => r.source.id === 'ITO-9642')!;
+    expect(ssl.relevance).toBeGreaterThanOrEqual(0.2);
+    expect(ssl.relevance).toBeLessThanOrEqual(1);
   });
 
   it('does not return unrelated Dashloop, database or VPN fixes', async () => {

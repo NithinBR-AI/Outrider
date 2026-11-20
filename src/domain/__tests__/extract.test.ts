@@ -10,9 +10,13 @@ import {
   MAX_TICKET_KEYWORDS,
   pickResolutionComment,
   ResolutionCommentCandidate,
+  stableStringify,
   SUMMARY_KEYWORD_WEIGHT,
+  ticketFingerprint,
+  toFingerprintInput,
   tokenize,
 } from '../extract';
+import { Ticket } from '../types';
 
 // Mirrors MIN_SYMPTOM_OVERLAP in adapters/jira.ts. The regression tests below check real
 // tickets land on the right side of the cutoff the adapter uses.
@@ -204,6 +208,94 @@ describe('pickResolutionComment', () => {
     expect(pickResolutionComment([agent('Root   cause:\n expired certificate, renewed  and reloaded nginx.')])).toBe(
       'Root cause: expired certificate, renewed and reloaded nginx.',
     );
+  });
+});
+
+describe('fingerprint (spec §8.2)', () => {
+  const ticket: Ticket = {
+    key: 'ITS-6265',
+    projectKey: 'ITS',
+    summary: 'Cannot log in',
+    description: 'Generic error on the login page',
+    requester: { accountId: 'acc-max', displayName: 'Max Taylor' },
+    requestTypeId: '10',
+    priority: 'High',
+    labels: ['vip', 'login'],
+    serviceIds: ['svc-b', 'svc-a'],
+    status: 'Waiting for support',
+    updatedAt: '2026-11-20T10:00:00.000Z',
+  };
+
+  it('projects exactly the fields that influence retrieval, ranking or output', () => {
+    expect(toFingerprintInput(ticket)).toEqual({
+      summary: 'Cannot log in',
+      description: 'Generic error on the login page',
+      requester: 'acc-max',
+      projectKey: 'ITS',
+      requestTypeId: '10',
+      priority: 'High',
+      labels: ['login', 'vip'],
+      serviceIds: ['svc-a', 'svc-b'],
+      status: 'Waiting for support',
+    });
+  });
+
+  it('is a 64-character hex SHA-256 and stable across calls', () => {
+    expect(ticketFingerprint(ticket)).toMatch(/^[0-9a-f]{64}$/);
+    expect(ticketFingerprint(ticket)).toBe(ticketFingerprint({ ...ticket }));
+  });
+
+  it('ignores the order of labels and service IDs', () => {
+    expect(ticketFingerprint({ ...ticket, labels: ['login', 'vip'], serviceIds: ['svc-a', 'svc-b'] })).toBe(ticketFingerprint(ticket));
+  });
+
+  it('ignores updatedAt and the requester display name', () => {
+    expect(ticketFingerprint({ ...ticket, updatedAt: '2030-01-01T00:00:00.000Z', requester: { accountId: 'acc-max', displayName: 'Renamed' } })).toBe(
+      ticketFingerprint(ticket),
+    );
+  });
+
+  it.each([
+    ['summary', { summary: 'Cannot log in at all' }],
+    ['description', { description: 'Different text' }],
+    ['requester', { requester: { accountId: 'acc-emma' } }],
+    ['project', { projectKey: 'ITO' }],
+    ['request type', { requestTypeId: '1' }],
+    ['priority', { priority: 'Critical' }],
+    ['labels', { labels: ['vip'] }],
+    ['services', { serviceIds: ['svc-a'] }],
+    ['status', { status: 'Resolved' }],
+  ] as [string, Partial<Ticket>][])('changes when the %s changes', (_name, change) => {
+    expect(ticketFingerprint({ ...ticket, ...change })).not.toBe(ticketFingerprint(ticket));
+  });
+
+  it('does not mutate the ticket while sorting', () => {
+    toFingerprintInput(ticket);
+    expect(ticket.labels).toEqual(['vip', 'login']);
+    expect(ticket.serviceIds).toEqual(['svc-b', 'svc-a']);
+  });
+
+  it('handles missing optional fields and missing arrays', () => {
+    const minimal = { key: 'ITS-1', projectKey: 'ITS', summary: '', description: '', status: 'Open', updatedAt: '' } as unknown as Ticket;
+    expect(toFingerprintInput(minimal)).toMatchObject({ labels: [], serviceIds: [], requester: undefined });
+    expect(ticketFingerprint(minimal)).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('stableStringify', () => {
+  it('sorts object keys at every level', () => {
+    expect(stableStringify({ b: 1, a: { d: 2, c: [3, { f: 4, e: 5 }] } })).toBe('{"a":{"c":[3,{"e":5,"f":4}],"d":2},"b":1}');
+  });
+
+  it('serializes undefined and null the same way, as null', () => {
+    expect(stableStringify({ a: undefined })).toBe(stableStringify({ a: null }));
+    expect(stableStringify(undefined)).toBe('null');
+  });
+
+  it('serializes primitives like JSON', () => {
+    expect(stableStringify('x')).toBe('"x"');
+    expect(stableStringify(1.5)).toBe('1.5');
+    expect(stableStringify(true)).toBe('true');
   });
 });
 

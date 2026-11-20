@@ -24,7 +24,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 4 | TypeScript conversion + Confluence API verification | ✅ |
 | 5 | Rovo MCP hello-world + `get-ticket-context` | ✅ |
 | 6a | Jira event → queue → consumer → stored bundle → panel (incidents, resolutions) | ✅ (development) |
-| 6b–6c | Ranking, fingerprint and supersession, locking, read-time authorization | 🔜 |
+| 6b | Deterministic ranking, ticket fingerprint, stale-build supersession, candidate limits, relevance indicator | ✅ (development) |
+| 6c | Per-ticket locking, write guards, read-time authorization | 🔜 |
 | 7–14 | Verifier, AI summary, remaining MCP tools, Confluence, TWG, demo | 🔜 |
 
 ## Install
@@ -45,7 +46,8 @@ The install link above installs the **production** environment, which is updated
 
 1. Go to [IT Support queue](https://one-atlas-edlg.atlassian.net/jira/servicedesk/projects/ITS/queues/custom/1)
 2. Open the demo ticket **ITS-6265** ("Cannot log in - getting error on login page")
-3. The **Outrider** panel in the right-side context section shows the related active incident and past resolution
+3. The **Outrider** panel in the right-side context section shows the related active incident and past resolution,
+   each with a source link, freshness and a match label (Strong, Good or Partial)
 
 Context is built when a ticket is created or updated, not when the panel opens. A ticket that has not changed
 since Outrider was installed shows "Context is being prepared": edit any field (for example Urgency), wait a
@@ -104,6 +106,23 @@ forge install --upgrade -p Jira -s <your-site>.atlassian.net -e development
 forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e development
 ```
 
+## How context is chosen
+
+- **Retrieval:** incidents (open, or resolved in the last 30 days) and resolved tickets (last 365 days) are pulled
+  from the configured projects. Jira text search is unreliable on the demo site, so a bounded candidate set is
+  fetched and scored in the app.
+- **Matching:** the ticket's distinctive keywords are compared with each candidate. Summary words count double;
+  generic support words ("error", "message", "system") are ignored. A candidate must clear a minimum match to appear.
+  For past resolutions, the fix text comes from the agent comment that describes the fix, not the newest comment.
+- **Ranking:** a fixed formula weighs similarity (35%), relationship (25%), status (20%, active above resolved),
+  recency (10%, 30-day half-life) and source authority (10%). Ties are broken by a shared Affected service,
+  then recency, then source key, so the same data always gives the same order.
+- **Limits:** up to 20 candidates are stored per ticket; the panel shows at most 5 per section.
+- **Staleness:** each bundle records a fingerprint of the ticket fields that affect retrieval. If the ticket changes
+  while a build runs, the result is discarded and a fresh build is queued.
+- **Current deviations, by design:** keyword overlap stands in for semantic similarity until embeddings are added,
+  and relationship strength stays 0 until Teamwork Graph relationships are added.
+
 ## Testing
 
 - Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
@@ -134,7 +153,7 @@ Jira event → Queue → Consumer → ContextBundle (KVS) → JSM Panel
 
 | Folder | Contents |
 |---|---|
-| `src/domain` | Pure types and text logic, no Forge imports |
+| `src/domain` | Pure types, text matching, ranking and fingerprint logic, no Forge imports |
 | `src/adapters` | Jira REST calls and KVS storage |
 | `src/pipeline` | Event handler, queue consumer, job routing, bundle builder |
 | `src/resolvers` | Panel resolver and MCP action handlers |

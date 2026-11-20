@@ -9,10 +9,15 @@ export type SourceRef = {
   updatedAt: string;
 };
 
+// relevance (0..1): how closely the item matches the ticket, for the panel's relevance indicator
+// (§17.2) and MCP "relevance information" (§15.2). Today this is the keyword match strength; it becomes
+// the semantic similarity once embeddings exist. Ordering uses the full §9 score, not this value alone.
+
 export type Incident = {
   source: SourceRef;
   status: 'active' | 'monitoring' | 'resolved';
   summary: string;
+  relevance: number;
   reportedCount?: number;
   startedAt?: string;
 };
@@ -22,6 +27,7 @@ export type Resolution = {
   resolvedAt: string;
   resolutionText: string;
   matchReason: 'same-requester' | 'same-symptom' | 'both';
+  relevance: number;
 };
 
 export type Article = {

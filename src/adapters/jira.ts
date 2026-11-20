@@ -6,6 +6,7 @@
 import api, { route } from '@forge/api';
 import { Incident, Resolution, SourceRef, Ticket } from '../domain/types';
 import { adfToText, excerpt, extractKeywords, keywordOverlap, mapIncidentStatus, pickResolutionComment, TicketKeywords } from '../domain/extract';
+import { incidentComponents, rank, resolutionComponents } from '../domain/score';
 
 // ---- Configuration (verified against the demo site, see outrider-seed/README.md) ----
 
@@ -28,10 +29,9 @@ const RESOLUTION_COMMENT_FETCHES = 8;
 const MIN_SYMPTOM_OVERLAP = 0.2;
 // A same-requester match still needs some symptom overlap; the requester alone is not relevance.
 const MIN_REQUESTER_OVERLAP = 0.05;
-// Bonus when a candidate shares an Affected service with the ticket.
-const SHARED_SERVICE_BONUS = 0.3;
-// Section size (spec §3.2: at most five displayed items per section).
-export const MAX_SECTION_ITEMS = 5;
+// Candidates kept per section from retrieval. The bundle-wide limit (MAX_BUNDLE_CANDIDATES) and the
+// display limit (MAX_DISPLAY_ITEMS_PER_SECTION) are applied later; the three limits are separate (§9.6).
+export const MAX_SECTION_CANDIDATES = 10;
 // Stored text lengths. Only excerpts are persisted, never full source text (spec §7.3).
 const INCIDENT_EXCERPT_CHARS = 300;
 const RESOLUTION_EXCERPT_CHARS = 600;
@@ -111,15 +111,19 @@ function candidateText(issue: JiraIssue): string {
 }
 
 /**
- * overlap decides whether a candidate qualifies at all. A shared Affected service only raises the
- * rank of a candidate that already qualifies: one service often covers unrelated problems
- * (on the demo site, database and VPN incidents share "Infrastructure Services").
+ * overlap decides whether a candidate qualifies at all, and stands in for semantic similarity in
+ * the ranking (domain/score.ts). A shared Affected service is only a ranking tie-breaker: one service
+ * often covers unrelated problems (on the demo site, database and VPN incidents share
+ * "Infrastructure Services").
  */
-function relevance(keywords: TicketKeywords, text: string, ticket: Ticket, issue: JiraIssue): { overlap: number; score: number } {
-  const overlap = keywordOverlap(keywords, text);
-  const shared = serviceIdsOf(issue).some((id) => ticket.serviceIds.includes(id));
-  return { overlap, score: overlap + (shared ? SHARED_SERVICE_BONUS : 0) };
+function match(keywords: TicketKeywords, text: string, ticket: Ticket, issue: JiraIssue): { overlap: number; sharedService: boolean } {
+  return {
+    overlap: keywordOverlap(keywords, text),
+    sharedService: serviceIdsOf(issue).some((id) => ticket.serviceIds.includes(id)),
+  };
 }
+
+const sourceKey = (issue: JiraIssue) => `jira-issue:${issue.key}`;
 
 const CANDIDATE_FIELDS = ['summary', 'description', 'status', 'created', 'updated', 'resolutiondate', 'reporter', 'issuetype', FIELD_AFFECTED_SERVICES];
 
@@ -145,8 +149,8 @@ export async function getTicket(ticketKey: string): Promise<Ticket> {
   };
 }
 
-/** Active incidents and recently resolved incidents related to the ticket. */
-export async function searchIncidents(ticket: Ticket): Promise<Incident[]> {
+/** Active incidents and recently resolved incidents related to the ticket, ranked per spec §9. */
+export async function searchIncidents(ticket: Ticket, now: Date = new Date()): Promise<Incident[]> {
   const projects = SOURCE_PROJECTS.join(', ');
   const jql =
     `project in (${projects}) AND issuetype = "[System] Incident" AND key != ${jqlString(ticket.key)} ` +
@@ -154,25 +158,33 @@ export async function searchIncidents(ticket: Ticket): Promise<Incident[]> {
   const issues = await searchJql(jql, CANDIDATE_FIELDS, INCIDENT_CANDIDATES);
   const keywords = extractKeywords(ticket.summary, ticket.description);
 
-  return issues
-    .map((issue) => {
-      const status = mapIncidentStatus(issue.fields.status?.name ?? '', issue.fields.status?.statusCategory?.key ?? '');
-      const text = candidateText(issue);
-      return { issue, status, ...relevance(keywords, text, ticket, issue) };
-    })
-    .filter((c) => c.status !== null && c.overlap >= MIN_SYMPTOM_OVERLAP)
-    .sort((a, b) => b.score - a.score || a.issue.key.localeCompare(b.issue.key))
-    .slice(0, MAX_SECTION_ITEMS)
-    .map(({ issue, status }) => ({
-      source: toSourceRef(issue),
-      status: status as Incident['status'],
-      summary: excerpt(adfToText(issue.fields.description), INCIDENT_EXCERPT_CHARS),
-      startedAt: issue.fields.created,
+  const qualified: { issue: JiraIssue; status: Incident['status']; overlap: number; sharedService: boolean }[] = [];
+  for (const issue of issues) {
+    const status = mapIncidentStatus(issue.fields.status?.name ?? '', issue.fields.status?.statusCategory?.key ?? '');
+    const m = match(keywords, candidateText(issue), ticket, issue);
+    if (status !== null && m.overlap >= MIN_SYMPTOM_OVERLAP) qualified.push({ issue, status, ...m });
+  }
+
+  return rank(
+    qualified.map((c) => ({
+      item: c,
+      sourceKey: sourceKey(c.issue),
+      sharedService: c.sharedService,
+      components: incidentComponents(c.status, c.issue.fields.created, c.overlap, now),
+    })),
+  )
+    .slice(0, MAX_SECTION_CANDIDATES)
+    .map(({ item: c }) => ({
+      source: toSourceRef(c.issue),
+      status: c.status,
+      summary: excerpt(adfToText(c.issue.fields.description), INCIDENT_EXCERPT_CHARS),
+      relevance: c.overlap,
+      startedAt: c.issue.fields.created,
     }));
 }
 
-/** Previously resolved tickets with similar symptoms or the same requester. */
-export async function searchResolutions(ticket: Ticket): Promise<Resolution[]> {
+/** Previously resolved tickets with similar symptoms or the same requester, ranked per spec §9. */
+export async function searchResolutions(ticket: Ticket, now: Date = new Date()): Promise<Resolution[]> {
   const projects = SOURCE_PROJECTS.join(', ');
   const base =
     `project in (${projects}) AND statusCategory = Done AND status != Cancelled ` +
@@ -194,10 +206,11 @@ export async function searchResolutions(ticket: Ticket): Promise<Resolution[]> {
   // First pass: score on summary and description. Keep candidates with some symptom overlap, plus
   // same-requester candidates, whose overlap may only appear in the resolution comment.
   const isSameRequester = (issue: JiraIssue) => !!requesterId && issue.fields.reporter?.accountId === requesterId;
+  // This pass only chooses which comments to fetch, so a simple overlap ordering is enough.
   const firstPass = [...merged.values()]
-    .map((issue) => ({ issue, ...relevance(keywords, candidateText(issue), ticket, issue) }))
+    .map((issue) => ({ issue, ...match(keywords, candidateText(issue), ticket, issue) }))
     .filter((c) => c.overlap > 0 || isSameRequester(c.issue))
-    .sort((a, b) => b.score - a.score || a.issue.key.localeCompare(b.issue.key))
+    .sort((a, b) => b.overlap - a.overlap || Number(b.sharedService) - Number(a.sharedService) || a.issue.key.localeCompare(b.issue.key))
     .slice(0, RESOLUTION_COMMENT_FETCHES);
 
   // Second pass: fetch the resolution text (comments) for the best candidates and re-score.
@@ -205,21 +218,28 @@ export async function searchResolutions(ticket: Ticket): Promise<Resolution[]> {
     firstPass.map(async ({ issue }) => {
       // One failed comment fetch drops that candidate only, not the whole section.
       const resolutionText = await getResolutionText(issue).catch(() => '');
-      return { issue, resolutionText, ...relevance(keywords, `${candidateText(issue)} ${resolutionText}`, ticket, issue) };
+      return { issue, resolutionText, ...match(keywords, `${candidateText(issue)} ${resolutionText}`, ticket, issue) };
     }),
   );
 
-  return withText
+  const qualified = withText
     .filter((c) => c.resolutionText.length > 0)
     .map((c) => ({ ...c, sameRequester: isSameRequester(c.issue), sameSymptom: c.overlap >= MIN_SYMPTOM_OVERLAP }))
-    .filter((c) => c.sameSymptom || (c.sameRequester && c.overlap >= MIN_REQUESTER_OVERLAP))
-    .sort((a, b) => b.score - a.score || a.issue.key.localeCompare(b.issue.key))
-    .slice(0, MAX_SECTION_ITEMS)
-    .map((c) => ({
+    .filter((c) => c.sameSymptom || (c.sameRequester && c.overlap >= MIN_REQUESTER_OVERLAP));
+
+  return rank(
+    qualified.map((c) => {
+      const resolvedAt = c.issue.fields.resolutiondate ?? c.issue.fields.updated ?? '';
+      return { item: { ...c, resolvedAt }, sourceKey: sourceKey(c.issue), sharedService: c.sharedService, components: resolutionComponents(resolvedAt, c.overlap, now) };
+    }),
+  )
+    .slice(0, MAX_SECTION_CANDIDATES)
+    .map(({ item: c }) => ({
       source: toSourceRef(c.issue),
-      resolvedAt: c.issue.fields.resolutiondate ?? c.issue.fields.updated ?? '',
+      resolvedAt: c.resolvedAt,
       resolutionText: excerpt(c.resolutionText, RESOLUTION_EXCERPT_CHARS),
       matchReason: c.sameRequester && c.sameSymptom ? 'both' : c.sameRequester ? 'same-requester' : 'same-symptom',
+      relevance: c.overlap,
     }));
 }
 

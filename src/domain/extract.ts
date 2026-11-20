@@ -1,5 +1,6 @@
-// Pure text and status helpers used by retrieval. No Forge imports and no I/O (spec §19.1).
-import { Incident } from './types';
+// Pure text, status and fingerprint helpers used by retrieval. No Forge imports and no I/O (spec §19.1).
+import { createHash } from 'crypto';
+import { Incident, Ticket } from './types';
 
 // Words that carry no symptom meaning in support tickets. Matching on these produces noise.
 const STOPWORDS = new Set([
@@ -145,6 +146,41 @@ export function mapIncidentStatus(statusName: string, statusCategoryKey: string)
   if (name === 'pending') return 'monitoring';
   if (statusCategoryKey === 'done') return 'resolved';
   return 'active';
+}
+
+/**
+ * The one projection used for both the initial and the final fingerprint (spec §8.2). It covers every
+ * field that influences retrieval, ranking or output. updatedAt is left out on purpose: it changes on
+ * every edit without changing what Outrider would retrieve.
+ */
+export function toFingerprintInput(ticket: Ticket) {
+  return {
+    summary: ticket.summary,
+    description: ticket.description,
+    requester: ticket.requester?.accountId,
+    projectKey: ticket.projectKey,
+    requestTypeId: ticket.requestTypeId,
+    priority: ticket.priority,
+    labels: [...(ticket.labels ?? [])].sort(),
+    serviceIds: [...(ticket.serviceIds ?? [])].sort(),
+    status: ticket.status,
+  };
+}
+
+/** JSON with object keys sorted at every level, so equal values always serialize identically. */
+export function stableStringify(value: unknown): string {
+  if (value === undefined) return 'null';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`);
+  return `{${entries.join(',')}}`;
+}
+
+/** SHA-256 of the stable serialization of the shared projection. */
+export function ticketFingerprint(ticket: Ticket): string {
+  return createHash('sha256').update(stableStringify(toFingerprintInput(ticket))).digest('hex');
 }
 
 /** Shortens text for storage and display without cutting words in half. */
