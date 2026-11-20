@@ -1,20 +1,42 @@
 modules:
   jira:issueContext:
     - key: outrider-context-panel
-      resource: main
+      resource: panel
       resolver:
-        function: resolver
+        function: panelResolver
       render: native
       title: Outrider
       description: Outrider prepares relevant context for this ticket.
       label: Outrider
 
+  rovo:mcp:
+    - key: outrider-mcp
+      name: Outrider MCP
+      tools:
+        - get-ticket-context
+
+  action:
+    - key: get-ticket-context
+      name: Get ticket context
+      function: getTicketContext
+      actionVerb: GET
+      description: Retrieve source-grounded context for a JSM ticket.
+      inputs:
+        ticketKey:
+          title: Ticket key
+          description: The Jira issue key, e.g. OD-1.
+          type: string
+          required: true
+
   function:
-    - key: resolver
-      handler: index.handler
+    - key: panelResolver
+      handler: index.panelResolver
+
+    - key: getTicketContext
+      handler: index.getTicketContext
 
 resources:
-  - key: main
+  - key: panel
     path: src/frontend/index.jsx
 
 app:

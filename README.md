@@ -22,8 +22,34 @@ Built on Atlassian Forge for Codegeist 2026.
 | 2 | Minimal Forge manifest + UI Kit panel | ✅ |
 | 3 | `forge lint`, deploy, verify panel in JSM | ✅ |
 | 4 | TypeScript conversion + Confluence API verification | ✅ |
-| 5 | Rovo MCP hello-world + `get-ticket-context` | 🔜 |
+| 5 | Rovo MCP hello-world + `get-ticket-context` | ✅ |
 | 6–14 | Full pipeline, verifier, MCP tools, TWG, demo | 🔜 |
+
+## Demo site
+
+The app is pre-installed on the Codegeist provisioned demo site with Rovo Enterprise, seeded JSM data, and Confluence knowledge bases.
+
+**Site:** `one-atlas-edlg.atlassian.net` (expires 2027-02-18)
+
+### See the JSM panel
+
+1. Go to [IT Support queue](https://one-atlas-edlg.atlassian.net/jira/servicedesk/projects/ITS/queues/custom/1)
+2. Open any ticket (e.g. ITS-6263)
+3. The **Outrider** panel appears in the right-side context section
+
+### Test the MCP tool via Rovo Studio
+
+1. Open any Jira page on the demo site and click **Ask Rovo** (top-right)
+2. Click the agent selector dropdown → **Create agent** → **Start from blank**
+3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context (development)** → **Add**
+4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6263`
+5. The tool returns a `ContextBundle` with `ticketKey`, `builtAt`, and source arrays
+
+> **Note:** The tool currently returns a stub bundle (empty source arrays). Full incident/resolution retrieval is implemented in Step 6.
+
+### View runtime logs
+
+Go to the [Forge developer console](https://developer.atlassian.com/console/myapps/91f15c4b-555e-4db0-99e1-7567c801fc07/monitoring/logs) → Logs tab.
 
 ## Requirements
 
