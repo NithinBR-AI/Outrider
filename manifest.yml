@@ -28,12 +28,31 @@ modules:
           type: string
           required: true
 
+  trigger:
+    - key: jira-issue-events
+      function: onJiraIssueEvent
+      events:
+        - avi:jira:created:issue
+        - avi:jira:updated:issue
+
+  consumer:
+    - key: outrider-build-consumer
+      queue: outrider-build-queue
+      function: buildJob
+
   function:
     - key: panelResolver
       handler: index.panelResolver
 
     - key: getTicketContext
       handler: index.getTicketContext
+
+    - key: onJiraIssueEvent
+      handler: index.onJiraIssueEvent
+
+    - key: buildJob
+      handler: index.buildJob
+      timeoutSeconds: 600
 
 resources:
   - key: panel

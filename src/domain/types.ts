@@ -73,6 +73,22 @@ export type ContextBundle = {
   failures: string[];
 };
 
+// The current state of a Jira ticket, normalized from the REST API (spec §8.1).
+// The consumer always re-fetches this; event payload text is never trusted.
+export type Ticket = {
+  key: string;
+  projectKey: string;
+  summary: string;
+  description: string;
+  requester?: { accountId: string; displayName?: string };
+  requestTypeId?: string;
+  priority?: string;
+  labels: string[];
+  serviceIds: string[];
+  status: string;
+  updatedAt: string;
+};
+
 export type ActorContext = {
   accountId?: string;
   source: 'jira-event' | 'confluence-event' | 'unknown';

@@ -1,17 +1,47 @@
+// Panel resolver for the jira:issueContext module.
+//
+// The panel is a read-only view of the latest stored bundle (spec §17). Opening the panel
+// never starts a build.
+//
+// STEP 6a LIMITATION: the stored bundle is returned without read-time authorization.
+// Spec §16 requires per-viewer filtering before anything is returned; that is step 6c.
+// Deploy this to the development environment only.
 import Resolver from '@forge/resolver';
-import { fetchConfluencePage } from '../adapters/confluence';
+import { getBundle, getStatus } from '../adapters/storage';
+import { BuildStatus, ContextBundle } from '../domain/types';
+
+export type PanelState =
+  | { state: 'no-bundle' }
+  | { state: 'queued' | 'building' | 'failed' | 'superseded'; bundle?: ContextBundle }
+  | { state: 'complete'; bundle: ContextBundle };
 
 const resolver = new Resolver();
 
-resolver.define('getText', async (req) => {
-  console.log(req);
-  try {
-    const page = await fetchConfluencePage();
-    return `Outrider online. Confluence connected: ${page}`;
-  } catch (e) {
-    console.error('Confluence read failed:', e);
-    return 'Outrider online. Confluence: not connected yet.';
-  }
+resolver.define('getContext', async (req): Promise<PanelState> => {
+  const extension = req.context?.extension as { issue?: { key?: string } } | undefined;
+  const ticketKey = extension?.issue?.key;
+  if (!ticketKey) return { state: 'no-bundle' };
+
+  const [status, bundle] = await Promise.all([getStatus(ticketKey), getBundle(ticketKey)]);
+  return toPanelState(status, bundle);
 });
+
+/** Maps the stored build status and bundle to what the panel shows (spec §17.1). Exported for tests. */
+export function toPanelState(status: BuildStatus | undefined, bundle: ContextBundle | undefined): PanelState {
+  switch (status?.status) {
+    case 'queued':
+    case 'building':
+    case 'superseded':
+      // Keep showing the last bundle while a newer one is prepared (spec §17.5).
+      return { state: status.status, bundle };
+    case 'failed':
+    case 'enqueue_failed':
+      return { state: 'failed', bundle };
+    case 'complete':
+      return bundle ? { state: 'complete', bundle } : { state: 'no-bundle' };
+    default:
+      return bundle ? { state: 'complete', bundle } : { state: 'no-bundle' };
+  }
+}
 
 export const panelResolver = resolver.getDefinitions();

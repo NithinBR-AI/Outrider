@@ -1,0 +1,3334 @@
+{
+  "_about": "Recorded from one-atlas-edlg.atlassian.net on 2026-11-20 (Codegeist demo site, seeded by outrider-seed). Only fields the Jira adapter reads are kept.",
+  "ticket": {
+    "id": "66408",
+    "key": "ITS-6265",
+    "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66408",
+    "fields": {
+      "summary": "Cannot log in - getting error on login page",
+      "description": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "I'm unable to log in to my account. When I enter my credentials, the page shows a generic error message. This started about 30 minutes ago. I've tried clearing cache and a different browser - same result. Other colleagues are also affected. We use this system for all customer-facing work and this is blocking our entire team."
+              }
+            ]
+          }
+        ]
+      },
+      "reporter": {
+        "accountId": "60ad3708411c2200684d57fd",
+        "displayName": "Max Taylor",
+        "accountType": "atlassian"
+      },
+      "project": {
+        "key": "ITS"
+      },
+      "priority": {
+        "name": "High"
+      },
+      "labels": [
+        "VIP"
+      ],
+      "status": {
+        "name": "Waiting for support",
+        "statusCategory": {
+          "key": "indeterminate"
+        }
+      },
+      "updated": "2026-11-20T08:44:00.000-0500",
+      "customfield_10010": {
+        "requestType": {
+          "id": "10"
+        }
+      },
+      "customfield_10039": [
+        {
+          "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/ffbc01b4-e3a5-45ad-a3e2-8c65f1469e9a"
+        }
+      ]
+    }
+  },
+  "incidentSearch": {
+    "issues": [
+      {
+        "id": "66407",
+        "key": "ITO-9649",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66407",
+        "fields": {
+          "summary": "VPN gateway unresponsive for remote workers",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The corporate VPN gateway at vpn.corp.internal is not accepting new connections. Existing sessions are unaffected. Remote workers are unable to connect and the connection times out. Network team is investigating firewall rule changes deployed at 08:30 UTC."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "created": "2026-11-20T07:53:28.722-0500",
+          "updated": "2026-11-20T07:53:33.490-0500",
+          "resolutiondate": null,
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66406",
+        "key": "ITO-9648",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66406",
+        "fields": {
+          "summary": "Database connection pool exhausted on primary DB cluster",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The primary PostgreSQL cluster is showing connection pool exhaustion. Applications dependent on db-primary are failing with too many connections errors and dashboards are loading slowly. DBA team notified. Workaround: restart app servers to release idle connections."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "created": "2026-11-20T07:53:26.961-0500",
+          "updated": "2026-11-20T07:53:31.587-0500",
+          "resolutiondate": null,
+          "reporter": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66405",
+        "key": "ITO-9647",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66405",
+        "fields": {
+          "summary": "Login service is experiencing intermittent failures",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Users across multiple regions are reporting inability to log in and see a generic error message on the login page. The auth service is returning 503 errors. First reported at 09:00 UTC. Affecting approximately 30% of login attempts. Auth team is investigating. Service: auth-service."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "created": "2026-11-20T07:53:25.278-0500",
+          "updated": "2026-11-20T07:53:29.678-0500",
+          "resolutiondate": null,
+          "reporter": {
+            "accountId": "60ad37a4ad76ea0070d7fdf8",
+            "displayName": "Ryan Lee",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/ffbc01b4-e3a5-45ad-a3e2-8c65f1469e9a"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66404",
+        "key": "ITO-9646",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66404",
+        "fields": {
+          "summary": "VPN connectivity failure after firewall policy update",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Remote workers unable to connect to VPN following a firewall policy update. Existing sessions were unaffected. New connection attempts timed out at the gateway after 60 seconds."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:53:20.532-0500",
+          "updated": "2026-11-20T07:53:25.043-0500",
+          "resolutiondate": "2026-11-20T07:53:23.499-0500",
+          "reporter": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66403",
+        "key": "ITO-9645",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66403",
+        "fields": {
+          "summary": "Database query slowness caused by missing index on requests table",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Support agents reported slow queue loading and reports timing out. Database monitoring showed queries against the requests table taking 8-12 seconds. Table scan on 4M rows."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:53:15.376-0500",
+          "updated": "2026-11-20T07:53:19.831-0500",
+          "resolutiondate": "2026-11-20T07:53:18.518-0500",
+          "reporter": {
+            "accountId": "60ad37a4ad76ea0070d7fdf8",
+            "displayName": "Ryan Lee",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66400",
+        "key": "ITO-9642",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66400",
+        "fields": {
+          "summary": "Login service failure due to expired SSL certificate",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Users reported login failures with SSL handshake errors and a generic error message on the login page. The auth service was returning 503 responses. Investigation found the SSL certificate on the load balancer had expired. Affected approximately 40% of login attempts for 2 hours."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:50:19.058-0500",
+          "updated": "2026-11-20T07:52:13.698-0500",
+          "resolutiondate": "2026-11-20T07:52:08.855-0500",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/ffbc01b4-e3a5-45ad-a3e2-8c65f1469e9a"
+            }
+          ]
+        }
+      },
+      {
+        "id": "65978",
+        "key": "ITO-9630",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/65978",
+        "fields": {
+          "summary": "Open Webstore failure to load - 29 page failures over the last 10 minutes",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Unreliable service "
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "created": "2025-09-18T10:23:20.391-0400",
+          "updated": "2025-09-18T10:28:24.413-0400",
+          "resolutiondate": null,
+          "reporter": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": null
+        }
+      }
+    ]
+  },
+  "resolutionSearch": {
+    "issues": [
+      {
+        "id": "66404",
+        "key": "ITO-9646",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66404",
+        "fields": {
+          "summary": "VPN connectivity failure after firewall policy update",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Remote workers unable to connect to VPN following a firewall policy update. Existing sessions were unaffected. New connection attempts timed out at the gateway after 60 seconds."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:53:20.532-0500",
+          "updated": "2026-11-20T07:53:25.043-0500",
+          "resolutiondate": "2026-11-20T07:53:23.499-0500",
+          "reporter": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66403",
+        "key": "ITO-9645",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66403",
+        "fields": {
+          "summary": "Database query slowness caused by missing index on requests table",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Support agents reported slow queue loading and reports timing out. Database monitoring showed queries against the requests table taking 8-12 seconds. Table scan on 4M rows."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:53:15.376-0500",
+          "updated": "2026-11-20T07:53:19.831-0500",
+          "resolutiondate": "2026-11-20T07:53:18.518-0500",
+          "reporter": {
+            "accountId": "60ad37a4ad76ea0070d7fdf8",
+            "displayName": "Ryan Lee",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66400",
+        "key": "ITO-9642",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66400",
+        "fields": {
+          "summary": "Login service failure due to expired SSL certificate",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Users reported login failures with SSL handshake errors and a generic error message on the login page. The auth service was returning 503 responses. Investigation found the SSL certificate on the load balancer had expired. Affected approximately 40% of login attempts for 2 hours."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:50:19.058-0500",
+          "updated": "2026-11-20T07:52:13.698-0500",
+          "resolutiondate": "2026-11-20T07:52:08.855-0500",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/ffbc01b4-e3a5-45ad-a3e2-8c65f1469e9a"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66243",
+        "key": "ITS-6264",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66243",
+        "fields": {
+          "summary": "Has something changed with Dashloop? Getting sync error",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hi, I need help with Dashloop. I've recently encountered a couple of issues that I need assistance with:"
+                  }
+                ]
+              },
+              {
+                "type": "orderedList",
+                "attrs": {
+                  "order": 1
+                },
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Dashboard Display Issue:",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " The analytics data on my dashboard is not displaying correctly. I noticed this started about a week ago after updating to the latest version of Dashloop on my iPhone."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Syncing Across Devices:",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " I'm having trouble syncing Dashloop across my devices. I receive an error message saying \"Sync failed due to network issues.\""
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I would appreciate your guidance on resolving these issues. Thank you in advance for your assistance."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Closed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-03-10T09:21:26.546-0400",
+          "updated": "2026-03-11T06:21:38.415-0400",
+          "resolutiondate": "2026-03-11T06:21:36.390-0400",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Service request"
+          },
+          "customfield_10039": null
+        }
+      },
+      {
+        "id": "66086",
+        "key": "ITS-6262",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66086",
+        "fields": {
+          "summary": "Network synching error with Dashloop",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Has something changed with Dashloop, the network, or the syncing process? My dashboards stopped updating about an hour ago."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Resolved",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2025-12-16T15:18:36.630-0500",
+          "updated": "2025-12-16T19:26:32.786-0500",
+          "resolutiondate": "2025-12-16T19:25:46.378-0500",
+          "reporter": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Service request"
+          },
+          "customfield_10039": null
+        }
+      },
+      {
+        "id": "66047",
+        "key": "ITS-6261",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66047",
+        "fields": {
+          "summary": "The dashloop dashboard is not displaying",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The analytics data on my dashboard is currently not displaying correctly on my phone - can someone help me?"
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Closed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2025-12-12T16:50:12.970-0500",
+          "updated": "2025-12-15T09:00:10.103-0500",
+          "resolutiondate": "2025-12-15T09:00:08.939-0500",
+          "reporter": {
+            "accountId": "60ad37a4ad76ea0070d7fdf8",
+            "displayName": "Ryan Lee",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Service request"
+          },
+          "customfield_10039": null
+        }
+      },
+      {
+        "id": "66045",
+        "key": "ITS-6259",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66045",
+        "fields": {
+          "summary": "Network sync error on Dashloop Mobile",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Details below."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Closed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2025-12-12T16:23:47.278-0500",
+          "updated": "2025-12-12T16:54:07.027-0500",
+          "resolutiondate": "2025-12-12T16:38:11.186-0500",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Service request"
+          },
+          "customfield_10039": null
+        }
+      },
+      {
+        "id": "66044",
+        "key": "ITS-6258",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66044",
+        "fields": {
+          "summary": "Dashloop error: Sync failed due to network issues",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I'm having an issue with syncing across my devices. The error message says, \"Sync failed due to network issues.\""
+                  }
+                ]
+              },
+              {
+                "type": "heading",
+                "attrs": {
+                  "level": 2
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Context"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The problem occurs when attempting to sync data between devices."
+                  }
+                ]
+              },
+              {
+                "type": "heading",
+                "attrs": {
+                  "level": 2
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Acceptance criteria"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "The error message should not appear during the sync process."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Syncing should work seamlessly across all devices."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Seems like a hardware problem, right?"
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2025-12-12T16:07:59.777-0500",
+          "updated": "2025-12-12T16:19:12.027-0500",
+          "resolutiondate": "2025-12-12T16:19:11.923-0500",
+          "reporter": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": null
+        }
+      }
+    ]
+  },
+  "requesterSearch": {
+    "issues": [
+      {
+        "id": "66400",
+        "key": "ITO-9642",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66400",
+        "fields": {
+          "summary": "Login service failure due to expired SSL certificate",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Users reported login failures with SSL handshake errors and a generic error message on the login page. The auth service was returning 503 responses. Investigation found the SSL certificate on the load balancer had expired. Affected approximately 40% of login attempts for 2 hours."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Completed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-11-20T07:50:19.058-0500",
+          "updated": "2026-11-20T07:52:13.698-0500",
+          "resolutiondate": "2026-11-20T07:52:08.855-0500",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Incident"
+          },
+          "customfield_10039": [
+            {
+              "id": "ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/ffbc01b4-e3a5-45ad-a3e2-8c65f1469e9a"
+            }
+          ]
+        }
+      },
+      {
+        "id": "66243",
+        "key": "ITS-6264",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66243",
+        "fields": {
+          "summary": "Has something changed with Dashloop? Getting sync error",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hi, I need help with Dashloop. I've recently encountered a couple of issues that I need assistance with:"
+                  }
+                ]
+              },
+              {
+                "type": "orderedList",
+                "attrs": {
+                  "order": 1
+                },
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Dashboard Display Issue:",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " The analytics data on my dashboard is not displaying correctly. I noticed this started about a week ago after updating to the latest version of Dashloop on my iPhone."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Syncing Across Devices:",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " I'm having trouble syncing Dashloop across my devices. I receive an error message saying \"Sync failed due to network issues.\""
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I would appreciate your guidance on resolving these issues. Thank you in advance for your assistance."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Closed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2026-03-10T09:21:26.546-0400",
+          "updated": "2026-03-11T06:21:38.415-0400",
+          "resolutiondate": "2026-03-11T06:21:36.390-0400",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Service request"
+          },
+          "customfield_10039": null
+        }
+      },
+      {
+        "id": "66045",
+        "key": "ITS-6259",
+        "self": "https://one-atlas-edlg.atlassian.net/rest/api/3/issue/66045",
+        "fields": {
+          "summary": "Network sync error on Dashloop Mobile",
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Details below."
+                  }
+                ]
+              }
+            ]
+          },
+          "status": {
+            "name": "Closed",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "created": "2025-12-12T16:23:47.278-0500",
+          "updated": "2025-12-12T16:54:07.027-0500",
+          "resolutiondate": "2025-12-12T16:38:11.186-0500",
+          "reporter": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "issuetype": {
+            "name": "[System] Service request"
+          },
+          "customfield_10039": null
+        }
+      }
+    ]
+  },
+  "comments": {
+    "ITO-9642": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thank you for reporting this issue. We are on it!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-11-20T07:50:23.897-0500"
+        },
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "panel",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "ATTENTION",
+                        "marks": [
+                          {
+                            "type": "strong"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "This is a critical Tier 1 priority service "
+                      }
+                    ]
+                  }
+                ],
+                "attrs": {
+                  "panelType": "error"
+                }
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2026-11-20T07:50:23.257-0500"
+        },
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "IT Ops team outage response gameplan:",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This appears to be a service outage As the first IT ops agent responding to this incident be sure to check the following: "
+                  }
+                ]
+              },
+              {
+                "type": "blockquote",
+                "content": [
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "Complete initial outage review using the "
+                              },
+                              {
+                                "type": "text",
+                                "text": "Incident Operations Runbooks",
+                                "marks": [
+                                  {
+                                    "type": "link",
+                                    "attrs": {
+                                      "href": "https://one-atlas-edlg.atlassian.net/wiki/spaces/ITO/pages/5236162624/RB+-+Billing+Health+Monitoring"
+                                    }
+                                  },
+                                  {
+                                    "type": "strong"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "text",
+                                "text": " and update the incident with what you find."
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "Start "
+                              },
+                              {
+                                "type": "text",
+                                "text": "Service outage communications",
+                                "marks": [
+                                  {
+                                    "type": "strong"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "text",
+                                "text": " and inform service owner(s)"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": " Establish a "
+                              },
+                              {
+                                "type": "text",
+                                "text": "incident response chatops room",
+                                "marks": [
+                                  {
+                                    "type": "strong"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "text",
+                                "text": " in Slack for the on-call team responding"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": " Post a "
+                              },
+                              {
+                                "type": "text",
+                                "text": "StatusPage incident",
+                                "marks": [
+                                  {
+                                    "type": "strong"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "text",
+                                "text": " announcement"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2026-11-20T07:50:23.253-0500"
+        },
+        {
+          "author": {
+            "accountId": "600a78342a6b66006918d911",
+            "displayName": "nithin ramesh",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Root cause: SSL certificate on auth-lb-01 expired at 02:00 UTC. Resolution: renewed certificate via Let's Encrypt and reloaded nginx. Verification: login success rate returned to 99.9% within 5 minutes of fix. Preventive action: added certificate expiry monitoring alert with 30-day advance warning."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-11-20T07:50:21.730-0500"
+        }
+      ]
+    },
+    "ITS-6261": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hey Ryan Lee,"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This ticket will breach its SLA in 3 hours. We are resolving your demo issue now."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Cheers,"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Your friendly automation bot"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-15T09:00:07.868-0500"
+        },
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hey "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad32ec411c2200684cd355",
+                      "text": "@Cassi Owens",
+                      "accessLevel": ""
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": ","
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This ticket will breach its SLA in 30 minutes. You should action it as soon as possible."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Cheers,"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Your friendly automation bot"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-15T07:30:07.479-0500"
+        }
+      ]
+    },
+    "ITS-6264": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hey Max Taylor,"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This ticket will breach its SLA in 3 hours. We are resolving your demo issue now."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Cheers,"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Your friendly automation bot"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-03-11T06:21:33.572-0400"
+        },
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hey "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad34a79e21bd0071e6f4db",
+                      "text": "@Emma Paris",
+                      "accessLevel": ""
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": ","
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This ticket will breach its SLA in 30 minutes. You should action it as soon as possible."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Cheers,"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Your friendly automation bot"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2026-03-10T12:51:31.129-0400"
+        }
+      ]
+    },
+    "ITO-9645": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thank you for reporting this issue. We are on it!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-11-20T07:53:19.001-0500"
+        },
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This is for a tier 3 or 4 Service. "
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Check the "
+                  },
+                  {
+                    "type": "text",
+                    "text": "runbooks",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "https://one-atlas-edlg.atlassian.net/wiki/spaces/ITO/pages/5236195364/Incident+Runbooks"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": " for guidance and any "
+                  },
+                  {
+                    "type": "text",
+                    "text": "known errors",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "https://one-atlas-edlg.atlassian.net/wiki/spaces/ITO/pages/5236129899/Known+Errors+Workarounds"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": "."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2026-11-20T07:53:18.244-0500"
+        },
+        {
+          "author": {
+            "accountId": "600a78342a6b66006918d911",
+            "displayName": "nithin ramesh",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Root cause: missing index on requests.created_at column after schema migration last week. Resolution: created index CREATE INDEX CONCURRENTLY idx_requests_created_at ON requests(created_at). Query time dropped from 10s to 40ms. No downtime required."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-11-20T07:53:17.309-0500"
+        }
+      ]
+    },
+    "ITS-6262": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad3708411c2200684d57fd",
+                      "text": "@Max Taylor",
+                      "accessLevel": "",
+                      "localId": "9c8a74d5-3af0-494b-a9e8-f2d175749c64"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " thank you for your help! "
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Confirming the fix was a simple restart on their side to reconnect and sync."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Appreciate the support!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T16:20:27.119-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "That’s great to hear!"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I’ll resolve the ticket but if you notice any more delays or errors today, reply here and we’ll re‑check the logs right away."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T16:19:17.556-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I just refreshed, and I’m starting to see new data coming in now. The timestamp shows 9:32 AM. Looks like it’s moving again! Woohoo! Appreciate the support!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T16:17:06.902-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks for waiting, Emma."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "We did find that something changed on our side this morning related to the Dashloop syncing process:"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "A config change to the sync worker pool combined with some increased network latency in your region was causing your sync jobs to back up and delay. They have already been requeued. "
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Our specialist has confirmed that a reboot on your side should reconnect you and resolve the issue."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Could you try restarting and then accessing the “Executive KPIs – Q4” dashboard now and let me know if you see any changes over the next few minutes?"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T16:14:59.633-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Update - no rollback required; Confirmed it was due to the intended change; A restart is all that is required. I already see new successful sync events in the logs. You can ask her to refresh and monitor for the next 10–15 minutes and she should see updates."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T16:12:57.487-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Tell her:"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "We’re rolling back the change now."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Dashboards should start catching up within "
+                          },
+                          {
+                            "type": "text",
+                            "text": "10–20 minutes",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": "."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "If it’s still stuck after "
+                          },
+                          {
+                            "type": "text",
+                            "text": "30 minutes",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": ", we’ll want fresh logs and another check."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I’ll ping you when the rollback is complete."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T16:10:04.884-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "That "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad3708411c2200684d57fd",
+                      "text": "@Max Taylor",
+                      "accessLevel": "",
+                      "localId": "63e73725-da28-41a0-a666-8326ecd7e2dd"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": "  helps a lot, thanks."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "When you roll back and requeue, how long should we tell Emma it will take before dashboards start updating again?"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T16:09:37.400-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Looking at logs for the tenant"
+                  },
+                  {
+                    "type": "text",
+                    "text": " ",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": "now"
+                  },
+                  {
+                    "type": "text",
+                    "text": ".",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "I see elevated"
+                          },
+                          {
+                            "type": "text",
+                            "text": " ",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": "timeout",
+                            "marks": [
+                              {
+                                "type": "code"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " ",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": "errors from the Dashloop sync workers against that tenant starting ~9:08 AM."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "There "
+                          },
+                          {
+                            "type": "text",
+                            "text": "was",
+                            "marks": [
+                              {
+                                "type": "em"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " a rollout this morning that reduced the number of workers in one region, which might be causing a backlog for some tenants, including this one."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "No explicit network outages, but there’s increased latency from their region to our sync cluster. Looks like a combination of the config change and a bit of network slowness."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I’m going to temporarily roll back the sync worker config and force a manual requeue for this tenant. Can you let Emma know we identified a change and are rolling it back?"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T15:33:40.243-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad3708411c2200684d57fd",
+                      "text": "@Max Taylor",
+                      "accessLevel": "",
+                      "localId": "ec2d796d-85ef-4acd-9330-fc9c1035e006"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " got the details below - Can you check if the recent sync worker pool config change is impacting this tenant? Also, any network routing changes for "
+                  },
+                  {
+                    "type": "text",
+                    "text": "my-company-us-123",
+                    "marks": [
+                      {
+                        "type": "code"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T15:30:48.738-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thank you!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T15:29:56.398-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Of course! "
+                  }
+                ]
+              },
+              {
+                "type": "orderedList",
+                "attrs": {
+                  "order": 1
+                },
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Tenant: "
+                          },
+                          {
+                            "type": "text",
+                            "text": "my-company-us-123",
+                            "marks": [
+                              {
+                                "type": "code"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Example dashboard: “Executive KPIs – Q4”"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Last time it looked correct was around 9:05 AM, I think"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph"
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T15:29:27.506-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks for your patience, Emma."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "To narrow this down, could you please share:"
+                  }
+                ]
+              },
+              {
+                "type": "orderedList",
+                "attrs": {
+                  "order": 1
+                },
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Your "
+                          },
+                          {
+                            "type": "text",
+                            "text": "tenant name or ID",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " (if you know it)."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "The "
+                          },
+                          {
+                            "type": "text",
+                            "text": "name or URL",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " of one dashboard that’s not syncing."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "If you remember, the "
+                          },
+                          {
+                            "type": "text",
+                            "text": "last time",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " you saw that dashboard update successfully."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T15:28:36.003-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad3708411c2200684d57fd",
+                      "text": "@Max Taylor",
+                      "accessLevel": "",
+                      "localId": "c35c564d-61bf-4141-8c39-55498c81636c"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " Will do. I’ll get that from Emma and circle back."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T15:28:16.175-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad2eb506bf0c006a432a17",
+                      "text": "@Mitch Davis",
+                      "accessLevel": "",
+                      "localId": "cd2a7805-ef22-4b10-83b7-c3133cac1ee3"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad37a4ad76ea0070d7fdf8",
+                      "text": "@Ryan Lee",
+                      "accessLevel": "",
+                      "localId": "02a1ea5d-0186-4156-bc4d-de68c2b37b36"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " "
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Looking at the deployment log for Dashloop… we pushed a config change to the sync worker pool ~8:50 AM."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "I also see a few increased error rates from one of the sync clusters, but no full outage."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Can you grab:"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Tenant ID"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "One example dashboard ID"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Approximate time of the last successful sync?"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T15:22:24.718-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad37a4ad76ea0070d7fdf8",
+                      "text": "@Ryan Lee",
+                      "accessLevel": "",
+                      "localId": "6c5b3ba5-022f-404b-b607-95e9c29d4d6a"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " or "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad3708411c2200684d57fd",
+                      "text": "@Max Taylor",
+                      "accessLevel": "",
+                      "localId": "c6d7957e-0569-4df2-af59-0a6143c4d16b"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " do you know if anything changed with Dashloop, the network layer, or the syncing pipeline in the last couple of hours?"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-16T15:20:42.180-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Got it, thanks for those details."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I’m going to check:"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Whether "
+                          },
+                          {
+                            "type": "text",
+                            "text": "anything changed on our side",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " with Dashloop or the sync service."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "If there are any "
+                          },
+                          {
+                            "type": "text",
+                            "text": "network or connectivity issues",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " on your tenant."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This might take a couple of minutes. I’ll update you as soon as I have more info."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T15:20:14.403-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I noticed it around 9:15 AM. All of my Dashloop dashboards seem frozen, and I see a small red icon in the top-right that says “Sync delayed – retrying.” It’s happening for my teammates too."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T15:19:57.321-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hi Emma, this is Mitch from Support. Thanks for reaching out."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "I’m sorry you’re running into issues with Dashloop. I’ll help you sort this out."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "To start, can you confirm:"
+                  }
+                ]
+              },
+              {
+                "type": "orderedList",
+                "attrs": {
+                  "order": 1
+                },
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Roughly what time you first noticed the sync stopped?"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Whether "
+                          },
+                          {
+                            "type": "text",
+                            "text": "all",
+                            "marks": [
+                              {
+                                "type": "em"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "text",
+                            "text": " dashboards are affected, or just specific ones?"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Are you seeing any error messages, or do things just quietly stop updating?"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks,"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Mitch"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-16T15:19:33.080-0500"
+        }
+      ]
+    },
+    "ITO-9646": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thank you for reporting this issue. We are on it!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-11-20T07:53:24.000-0500"
+        },
+        {
+          "author": {
+            "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+            "displayName": "Automation for Jira",
+            "accountType": "app"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This is for a tier 3 or 4 Service. "
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Check the "
+                  },
+                  {
+                    "type": "text",
+                    "text": "runbooks",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "https://one-atlas-edlg.atlassian.net/wiki/spaces/ITO/pages/5236195364/Incident+Runbooks"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": " for guidance and any "
+                  },
+                  {
+                    "type": "text",
+                    "text": "known errors",
+                    "marks": [
+                      {
+                        "type": "link",
+                        "attrs": {
+                          "href": "https://one-atlas-edlg.atlassian.net/wiki/spaces/ITO/pages/5236129899/Known+Errors+Workarounds"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": "."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2026-11-20T07:53:23.298-0500"
+        },
+        {
+          "author": {
+            "accountId": "600a78342a6b66006918d911",
+            "displayName": "nithin ramesh",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Root cause: firewall rule update accidentally blocked UDP port 1194 (OpenVPN). The rule FW-CORP-2024-11 was misconfigured. Resolution: reverted rule to previous version and redeployed. VPN connectivity restored within 10 minutes. Preventive action: add firewall rule change to change management process with mandatory connectivity test."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2026-11-20T07:53:22.147-0500"
+        }
+      ]
+    },
+    "ITS-6258": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "60ad32ec411c2200684cd355",
+            "displayName": "Cassi Owens",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks for confirming, Emma! If there's anything else you need, just give us a shout."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-12T16:19:11.968-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Resolved with phone restart."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-12T16:18:13.151-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "That worked! Thank you, you can close this out."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-12T16:17:54.252-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad32ec411c2200684cd355",
+            "displayName": "Cassi Owens",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hello Emma,"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thank you for contacting our IT support service desk. We reset the VPN today. The simplest solution is to shut down your phone and restart it."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Warm regards,"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Cassi Owens  "
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "IT Support Team",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-12T16:11:24.598-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad32ec411c2200684cd355",
+                      "text": "@Cassi Owens",
+                      "accessLevel": "",
+                      "localId": "62e62fbe-f3cf-493b-8917-440095937f0b"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " We had to reset the VPN today. The easiest way to fix the problem is to shut down your phone and boot it up again."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-12T16:08:47.033-0500"
+        }
+      ]
+    },
+    "ITS-6259": {
+      "comments": [
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks for the assist "
+                  },
+                  {
+                    "type": "mention",
+                    "attrs": {
+                      "id": "60ad2eb506bf0c006a432a17",
+                      "text": "@Mitch Davis",
+                      "accessLevel": "",
+                      "localId": "e9e145da-43ec-43ca-b2d8-ad57b8f91ae7"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "text": " ! It seems it was related to the VPN issue from earlier and a reboot worked."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-12T16:39:02.085-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Thanks for confirming the reboot worked! We’ll close this out but please reach out if you experience further issues."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-12T16:38:08.110-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad3708411c2200684d57fd",
+            "displayName": "Max Taylor",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "That seems to have fixed it! Thank you!"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-12T16:37:03.089-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad34a79e21bd0071e6f4db",
+            "displayName": "Emma Paris",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Hi Max,"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "We had to reset the VPN today. The easiest way to fix the problem is to shut down your phone and boot it up again."
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": true,
+          "created": "2025-12-12T16:34:38.641-0500"
+        },
+        {
+          "author": {
+            "accountId": "60ad2eb506bf0c006a432a17",
+            "displayName": "Mitch Davis",
+            "accountType": "atlassian"
+          },
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "This may be related to the VPN issues we were having earlier today"
+                  }
+                ]
+              }
+            ]
+          },
+          "jsdPublic": false,
+          "created": "2025-12-12T16:28:43.520-0500"
+        }
+      ]
+    }
+  }
+}

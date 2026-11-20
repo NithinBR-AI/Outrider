@@ -50,3 +50,7 @@ Thumbs.db
 
 
 /.forge/
+
+# Local secrets (never commit)
+.env
+

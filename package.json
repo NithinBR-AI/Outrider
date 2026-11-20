@@ -1,23 +1,29 @@
 {
   "name": "outrider",
-  "version": "1.1.53-next.13",
-  "main": "index.js",
+  "version": "0.1.0",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "lint": "eslint src/**/*"
+    "lint": "eslint \"src/frontend/**/*.jsx\"",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
+    "@vitest/coverage-v8": "^5.1.1",
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
   },
   "dependencies": {
     "@forge/api": "^8.5.0",
-    "@forge/bridge": "7.3.0-next.12",
-    "@forge/react": "12.5.0-next.2",
+    "@forge/bridge": "^7.3.0",
+    "@forge/events": "^3.0.10",
+    "@forge/kvs": "^2.1.2",
+    "@forge/react": "^12.5.0",
     "@forge/resolver": "2.0.2",
     "react": "^18.2.0"
   }

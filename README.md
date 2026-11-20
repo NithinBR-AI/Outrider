@@ -23,7 +23,9 @@ Built on Atlassian Forge for Codegeist 2026.
 | 3 | `forge lint`, deploy, verify panel in JSM | ✅ |
 | 4 | TypeScript conversion + Confluence API verification | ✅ |
 | 5 | Rovo MCP hello-world + `get-ticket-context` | ✅ |
-| 6–14 | Full pipeline, verifier, MCP tools, TWG, demo | 🔜 |
+| 6a | Jira event → queue → consumer → stored bundle → panel (incidents, resolutions) | ✅ (development) |
+| 6b–6c | Ranking, fingerprint and supersession, locking, read-time authorization | 🔜 |
+| 7–14 | Verifier, AI summary, remaining MCP tools, Confluence, TWG, demo | 🔜 |
 
 ## Install
 
@@ -33,25 +35,31 @@ Built on Atlassian Forge for Codegeist 2026.
 
 ## Demo site
 
-The app is pre-installed on the Codegeist provisioned demo site with Rovo Enterprise, seeded JSM data, and Confluence knowledge bases.
+The Codegeist provisioned demo site has Rovo Enterprise, seeded JSM data, and Confluence knowledge bases.
+During development it runs the **development** environment of Outrider (the panel shows a **DEV** badge).
+The install link above installs the **production** environment, which is updated before submission.
 
 **Site:** `one-atlas-edlg.atlassian.net` (expires 2027-02-18)
 
 ### See the JSM panel
 
 1. Go to [IT Support queue](https://one-atlas-edlg.atlassian.net/jira/servicedesk/projects/ITS/queues/custom/1)
-2. Open any ticket (e.g. ITS-6263)
-3. The **Outrider** panel appears in the right-side context section
+2. Open the demo ticket **ITS-6265** ("Cannot log in - getting error on login page")
+3. The **Outrider** panel in the right-side context section shows the related active incident and past resolution
+
+Context is built when a ticket is created or updated, not when the panel opens. A ticket that has not changed
+since Outrider was installed shows "Context is being prepared": edit any field (for example Urgency), wait a
+minute or two for the Jira event, then press **Refresh** at the top of the panel. Refresh only re-reads stored context.
 
 ### Test the MCP tool via Rovo Studio
 
 1. Open any Jira page on the demo site and click **Ask Rovo** (top-right)
 2. Click the agent selector dropdown → **Create agent** → **Start from blank**
-3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context** → **Add**
-4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6263`
+3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context (development)** → **Add**
+4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6265`
 5. The tool returns a `ContextBundle` with `ticketKey`, `builtAt`, and source arrays
 
-> **Note:** The tool currently returns a stub bundle (empty source arrays). Full incident/resolution retrieval lands in the next build.
+> **Note:** The MCP tool still returns a stub bundle (empty source arrays). It returns real, per-viewer filtered context once read-time authorization lands (step 6c).
 
 ### View runtime logs
 
@@ -85,16 +93,50 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e production
 ## Development
 
 ```
+npm test                  # unit tests (vitest), no Atlassian access needed
+npm run coverage          # tests + coverage; fails if domain code drops below 100%
+npm run typecheck         # TypeScript check (tsc --noEmit)
+npm run lint              # eslint on the UI Kit frontend (.jsx)
+forge lint                # Forge manifest and code checks
 forge deploy -e development
 forge logs -e development
 forge install --upgrade -p Jira -s <your-site>.atlassian.net -e development
 forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e development
 ```
 
+## Testing
+
+- Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
+- The Jira adapter is tested against responses recorded from the demo site (`tests/fixtures/jira-demo-site.json`),
+  so CI never calls Atlassian APIs.
+- Domain logic (`src/domain`) is held at 100% branch coverage; `npm run coverage` enforces it.
+
+## Current configuration
+
+The project and field settings are constants in code, matched to the Codegeist demo site:
+
+| Setting | Value | Where |
+|---|---|---|
+| Projects that get a context bundle | `ITS` | `BUNDLE_PROJECTS` in `src/pipeline/enqueue.ts` |
+| Projects searched for incidents and resolutions | `ITS`, `ITO` | `SOURCE_PROJECTS` in `src/adapters/jira.ts` |
+| Affected services field | `customfield_10039` | `src/adapters/jira.ts` |
+| Request type field | `customfield_10010` | `src/adapters/jira.ts` |
+
+On a site without these projects the panel stays in "Context is being prepared". Making these configurable
+per site is planned before submission.
+
 ## Architecture
 
 ```
-Jira event → Queue → Consumer → ContextBundle → JSM Panel
-                                              → Rovo MCP tools
+Jira event → Queue → Consumer → ContextBundle (KVS) → JSM Panel
+                                                    → Rovo MCP tools
 ```
+
+| Folder | Contents |
+|---|---|
+| `src/domain` | Pure types and text logic, no Forge imports |
+| `src/adapters` | Jira REST calls and KVS storage |
+| `src/pipeline` | Event handler, queue consumer, job routing, bundle builder |
+| `src/resolvers` | Panel resolver and MCP action handlers |
+| `src/frontend` | UI Kit panel |
 
