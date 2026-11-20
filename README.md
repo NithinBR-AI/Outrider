@@ -25,7 +25,9 @@ Built on Atlassian Forge for Codegeist 2026.
 | 5 | Rovo MCP hello-world + `get-ticket-context` | ✅ |
 | 6a | Jira event → queue → consumer → stored bundle → panel (incidents, resolutions) | ✅ (development) |
 | 6b | Deterministic ranking, ticket fingerprint, stale-build supersession, candidate limits, relevance indicator | ✅ (development) |
-| 6c | Per-ticket locking, write guards, read-time authorization | 🔜 |
+| 6c-1 | Per-ticket lock, write guards, concurrency test | ✅ (development) |
+| 6c-2 | Read-time authorization in the panel, verified with two users on the demo site | ✅ (development) |
+| 6c-3 | MCP caller identity and authorization gate for `get-ticket-context` | 🔜 |
 | 7–14 | Verifier, AI summary, remaining MCP tools, Confluence, TWG, demo | 🔜 |
 
 ## Install
@@ -61,7 +63,7 @@ minute or two for the Jira event, then press **Refresh** at the top of the panel
 4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6265`
 5. The tool returns a `ContextBundle` with `ticketKey`, `builtAt`, and source arrays
 
-> **Note:** The MCP tool still returns a stub bundle (empty source arrays). It returns real, per-viewer filtered context once read-time authorization lands (step 6c).
+> **Note:** The MCP tool still returns a stub bundle (empty source arrays). The panel already serves real, per-viewer filtered context; the MCP tool gets the same in step 6c-3.
 
 ### View runtime logs
 
@@ -123,9 +125,29 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 - **Current deviations, by design:** keyword overlap stands in for semantic similarity until embeddings are added,
   and relationship strength stays 0 until Teamwork Graph relationships are added.
 
+## Permissions and data access
+
+- **Build as the app, read as the viewer.** Context is retrieved with the app's identity and stored once per
+  ticket. Every read is filtered for the person viewing it: one JQL search runs as that viewer for the ticket
+  and every source in the stored context, and only issues Jira returns are shown.
+- **No access to the ticket:** the panel shows a generic "Outrider context is not available", identical
+  whether or not context exists.
+- **No access to a source:** the incident or resolution is left out with no placeholder or count. A section
+  the viewer cannot see into looks the same as an empty one.
+- **Check fails:** nothing is shown. A failed permission check is treated as "not authorized".
+- **Revoked access** takes effect on the next read; the stored context does not need to be rebuilt.
+- Verified on the demo site with two real users: an agent with ITS and ITO access sees the related ITO incident
+  and fix on ITS-6265; an ITS-only agent sees empty sections. Granting and then revoking ITO access for the
+  second user made the items appear and disappear on Refresh, with the same stored context.
+
 ## Testing
 
 - Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
+- Integration suites in `tests/integration/` run the real pipeline, storage and panel code with Jira and KVS
+  simulated: concurrent builds for one ticket, revoked access after a build, and read authorization across viewers.
+- Builds for the same ticket are serialized with a per-ticket lock (atomic create-if-absent in Forge KVS, with
+  lease expiry) plus write guards. This is best-effort, not strict mutual exclusion; the concurrency tests show
+  the newer context wins in the tested interleavings.
 - The Jira adapter is tested against responses recorded from the demo site (`tests/fixtures/jira-demo-site.json`),
   so CI never calls Atlassian APIs.
 - Domain logic (`src/domain`) is held at 100% branch coverage; `npm run coverage` enforces it.

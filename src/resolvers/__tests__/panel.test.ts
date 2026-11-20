@@ -11,6 +11,8 @@ vi.mock('@forge/resolver', () => ({
     }
   },
 }));
+// Viewer authorization is covered in tests/integration/read-authorization.test.ts.
+vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: async () => new Set<string>() }));
 
 import { forDisplay, toPanelState } from '../panel';
 import { MAX_DISPLAY_ITEMS_PER_SECTION } from '../../domain/score';

@@ -94,6 +94,8 @@ const Header = ({ builtAt, onRefresh, refreshing }) => (
 
 const STATE_MESSAGE = {
   'no-bundle': 'Context is being prepared. Check back shortly.',
+  // Generic on purpose: never says whether context exists for this ticket (spec §17.1).
+  unavailable: 'Outrider context is not available.',
   queued: 'Context assembly is queued.',
   building: 'Context is being assembled.',
   superseded: 'A newer version is being prepared.',
@@ -109,7 +111,7 @@ const App = () => {
     let timer;
     const load = () => invoke('getContext').then((r) => { if (!cancelled) setResult(r); return r; });
     load().then((r) => {
-      if (r && r.state !== 'complete' && r.state !== 'failed') {
+      if (r && r.state !== 'complete' && r.state !== 'failed' && r.state !== 'unavailable') {
         timer = setTimeout(load, POLL_ONCE_AFTER_MS);
       }
     });
@@ -124,6 +126,10 @@ const App = () => {
   if (!result) return <Spinner label="Loading Outrider context" />;
 
   const message = STATE_MESSAGE[result.state];
+  if (result.state === 'unavailable') {
+    // Nothing else is rendered: no freshness, no build state, no hint that context exists.
+    return <SectionMessage appearance="information"><Text>{message}</Text></SectionMessage>;
+  }
   return (
     <Stack space="space.200">
       <Header builtAt={result.bundle?.builtAt} onRefresh={refresh} refreshing={refreshing} />

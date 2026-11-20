@@ -12,26 +12,28 @@ const fixture: any = JSON.parse(readFileSync(join(process.cwd(), 'tests', 'fixtu
 type Call = { path: string; body?: { jql?: string; maxResults?: number } };
 
 const mock = vi.hoisted(() => ({
-  calls: [] as { path: string; body?: { jql?: string; maxResults?: number } }[],
+  calls: [] as { as: 'app' | 'user'; path: string; body?: { jql?: string; maxResults?: number } }[],
   handler: null as null | ((path: string, body?: { jql?: string }) => { status: number; json: unknown } | Promise<never>),
 }));
 
-vi.mock('@forge/api', () => ({
-  // route is a tagged template in Forge; joining the parts is enough for these tests.
-  route: (strings: TemplateStringsArray, ...values: unknown[]) => strings.reduce((acc, s, i) => acc + s + (i < values.length ? String(values[i]) : ''), ''),
-  default: {
-    asApp: () => ({
-      requestJira: async (path: string, init?: { body?: string }) => {
-        const body = init?.body ? JSON.parse(init.body) : undefined;
-        mock.calls.push({ path, body });
-        const res = await mock.handler!(path, body);
-        return { ok: res.status >= 200 && res.status < 300, status: res.status, json: async () => res.json };
-      },
-    }),
-  },
-}));
+vi.mock('@forge/api', () => {
+  // Records which identity made each call, so tests can prove the visibility check runs as the viewer.
+  const requester = (as: 'app' | 'user') => ({
+    requestJira: async (path: string, init?: { body?: string }) => {
+      const body = init?.body ? JSON.parse(init.body) : undefined;
+      mock.calls.push({ as, path, body });
+      const res = await mock.handler!(path, body);
+      return { ok: res.status >= 200 && res.status < 300, status: res.status, json: async () => res.json };
+    },
+  });
+  return {
+    // route is a tagged template in Forge; joining the parts is enough for these tests.
+    route: (strings: TemplateStringsArray, ...values: unknown[]) => strings.reduce((acc, s, i) => acc + s + (i < values.length ? String(values[i]) : ''), ''),
+    default: { asApp: () => requester('app'), asUser: () => requester('user') },
+  };
+});
 
-import { getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, SOURCE_PROJECTS } from '../jira';
+import { getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
 
 const comments = fixture.comments as Record<string, unknown>;
 
@@ -223,5 +225,64 @@ describe('searchResolutions (demo site ITS-6265)', () => {
     const t = await getTicket('ITS-6265');
     const resolutions = await searchResolutions({ ...t, summary: 'Printer jam on floor three', description: 'Paper tray stuck', requester: undefined, serviceIds: [] });
     expect(resolutions).toEqual([]);
+  });
+});
+
+describe('visibleIssueKeys (read-time authorization, spec §16)', () => {
+  // Simulates Jira answering a viewer's JQL: only keys in `canSee` come back.
+  const viewerCanSee = (canSee: string[]) => (_path: string, body?: { jql?: string }) => {
+    const asked = (body?.jql ?? '').replace(/^key in \(|\)$/g, '').split(', ');
+    return { status: 200, json: { issues: asked.filter((k) => canSee.includes(k)).map((key) => ({ key })) } };
+  };
+
+  it('runs as the viewer, never as the app', async () => {
+    mock.handler = viewerCanSee(['ITS-6265']);
+    await visibleIssueKeys(['ITS-6265', 'ITO-9647']);
+    expect(mock.calls.length).toBeGreaterThan(0);
+    expect(mock.calls.every((c) => c.as === 'user')).toBe(true);
+  });
+
+  it('returns only the keys the viewer can see (demo site: user B sees ITS, not ITO)', async () => {
+    mock.handler = viewerCanSee(['ITS-6265']);
+    expect([...(await visibleIssueKeys(['ITS-6265', 'ITO-9647', 'ITO-9642']))]).toEqual(['ITS-6265']);
+  });
+
+  it('checks all keys in one JQL search', async () => {
+    mock.handler = viewerCanSee([]);
+    await visibleIssueKeys(['ITS-6265', 'ITO-9647', 'ITO-9642']);
+    expect(mock.calls).toHaveLength(1);
+    expect(mock.calls[0].path).toBe('/rest/api/3/search/jql');
+    expect(mock.calls[0].body).toMatchObject({ jql: 'key in (ITS-6265, ITO-9647, ITO-9642)', maxResults: 3 });
+  });
+
+  it('never sends values that are not issue keys, so JQL cannot be injected', async () => {
+    mock.handler = viewerCanSee(['ITS-1']);
+    const visible = await visibleIssueKeys(['ITS-1', 'ITS-2) OR project = SECRET OR key in (X-1', 'lowercase-1', '"ITS-3"', '']);
+    expect(mock.calls[0].body!.jql).toBe('key in (ITS-1)');
+    expect([...visible]).toEqual(['ITS-1']);
+  });
+
+  it('removes duplicate keys', async () => {
+    mock.handler = viewerCanSee(['ITS-1']);
+    await visibleIssueKeys(['ITS-1', 'ITS-1', 'ITS-1']);
+    expect(mock.calls[0].body!.jql).toBe('key in (ITS-1)');
+  });
+
+  it('makes no call for an empty list', async () => {
+    expect([...(await visibleIssueKeys([]))]).toEqual([]);
+    expect(mock.calls).toHaveLength(0);
+  });
+
+  it('splits large key lists into batches of 50', async () => {
+    const keys = Array.from({ length: 120 }, (_, i) => `ITS-${i + 1}`);
+    mock.handler = viewerCanSee(keys);
+    const visible = await visibleIssueKeys(keys);
+    expect(mock.calls.map((c) => c.body!.maxResults)).toEqual([50, 50, 20]);
+    expect(visible.size).toBe(120);
+  });
+
+  it('throws a short code when the check fails, so callers can fail closed', async () => {
+    mock.handler = () => ({ status: 503, json: {} });
+    await expect(visibleIssueKeys(['ITS-1'])).rejects.toThrow('jira-visibility-503');
   });
 });

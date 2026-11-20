@@ -127,6 +127,36 @@ const sourceKey = (issue: JiraIssue) => `jira-issue:${issue.key}`;
 
 const CANDIDATE_FIELDS = ['summary', 'description', 'status', 'created', 'updated', 'resolutiondate', 'reporter', 'issuetype', FIELD_AFFECTED_SERVICES];
 
+// ---- Read-time authorization (spec §16) ----
+
+// Jira issue key shape. Anything else is never sent to Jira and counts as not visible.
+const ISSUE_KEY = /^[A-Z][A-Z0-9_]+-\d+$/;
+// Keys per visibility search. A bundle holds at most 20 sources plus the ticket, so one call is typical.
+const VISIBILITY_BATCH = 50;
+
+/**
+ * Returns the subset of issue keys the current viewer can see, using one JQL search per batch run AS
+ * THE VIEWER (asUser), never as the app. Verified on the demo site: issues the viewer cannot see,
+ * deleted issues and keys in unknown projects are all silently left out, so the result never reveals
+ * which of those cases applied. Throws on any failure; callers must treat that as "not visible" (§16.5).
+ */
+export async function visibleIssueKeys(keys: string[]): Promise<Set<string>> {
+  const valid = [...new Set(keys)].filter((k) => ISSUE_KEY.test(k));
+  const visible = new Set<string>();
+  for (let i = 0; i < valid.length; i += VISIBILITY_BATCH) {
+    const batch = valid.slice(i, i + VISIBILITY_BATCH);
+    const res = await api.asUser().requestJira(route`/rest/api/3/search/jql`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jql: `key in (${batch.join(', ')})`, fields: ['key'], maxResults: batch.length }),
+    });
+    if (!res.ok) throw new Error(`jira-visibility-${res.status}`);
+    const data = (await res.json()) as { issues?: { key: string }[] };
+    for (const issue of data.issues ?? []) visible.add(issue.key);
+  }
+  return visible;
+}
+
 // ---- Public API ----
 
 /** Fetches the current state of a ticket (spec §8.1). */
