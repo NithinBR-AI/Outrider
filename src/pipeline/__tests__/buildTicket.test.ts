@@ -8,12 +8,18 @@ const h = vi.hoisted(() => ({
   searchIncidents: vi.fn(),
   searchResolutions: vi.fn(),
   enqueueTicketBuild: vi.fn(),
+  requeueTicketJob: vi.fn(),
 }));
 
+// In-memory KVS: FAIL_IF_EXISTS rejects when the key exists; expired keys are not removed.
 vi.mock('@forge/kvs', () => ({
   kvs: {
     get: async (key: string) => h.store.get(key),
-    set: async (key: string, value: unknown) => void h.store.set(key, value),
+    set: async (key: string, value: unknown, options?: { keyPolicy?: string }) => {
+      if (options?.keyPolicy === 'FAIL_IF_EXISTS' && h.store.has(key)) throw new Error('conflict');
+      h.store.set(key, value);
+    },
+    delete: async (key: string) => void h.store.delete(key),
   },
 }));
 vi.mock('../../adapters/jira', () => ({
@@ -21,7 +27,7 @@ vi.mock('../../adapters/jira', () => ({
   searchIncidents: h.searchIncidents,
   searchResolutions: h.searchResolutions,
 }));
-vi.mock('../enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
+vi.mock('../enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild, requeueTicketJob: h.requeueTicketJob }));
 
 import { buildTicketBundle } from '../buildTicket';
 import { ticketFingerprint } from '../../domain/extract';
@@ -42,6 +48,7 @@ beforeEach(() => {
   h.searchIncidents.mockReset().mockResolvedValue([incident('ITO-1')]);
   h.searchResolutions.mockReset().mockResolvedValue([resolution('ITO-2')]);
   h.enqueueTicketBuild.mockReset().mockResolvedValue({ buildId: 'build-next', requestedAt: 'r2' });
+  h.requeueTicketJob.mockReset().mockResolvedValue(undefined);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -166,6 +173,80 @@ describe('buildTicketBundle', () => {
   });
 });
 
+describe('per-ticket lock and write guards (spec §8.5, §8.6)', () => {
+  const lockRecord = (expiresInSeconds: number, ownerToken = 'other-token') => ({
+    buildId: 'build-other',
+    ownerToken,
+    acquiredAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+  });
+
+  it('releases the lock after a successful build', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.store.has('lock:ITS-1')).toBe(false);
+  });
+
+  it('releases the lock after a failed build', async () => {
+    setStatus({});
+    h.getTicket.mockRejectedValue(new Error('jira-get-500'));
+    await buildTicketBundle(job());
+    expect(status().status).toBe('failed');
+    expect(h.store.has('lock:ITS-1')).toBe(false);
+  });
+
+  it('re-queues the same job when another build holds the lock, without doing any work', async () => {
+    setStatus({});
+    h.store.set('lock:ITS-1', lockRecord(300));
+    await buildTicketBundle(job());
+    expect(h.requeueTicketJob).toHaveBeenCalledWith(job());
+    expect(h.getTicket).not.toHaveBeenCalled();
+    expect(status().status).toBe('queued');
+    // The other build's lock is left alone.
+    expect((h.store.get('lock:ITS-1') as { ownerToken: string }).ownerToken).toBe('other-token');
+  });
+
+  it('takes over an expired lock left by a crashed build and completes', async () => {
+    setStatus({});
+    h.store.set('lock:ITS-1', lockRecord(-10, 'crashed-token'));
+    await buildTicketBundle(job());
+    expect(h.requeueTicketJob).not.toHaveBeenCalled();
+    expect(bundle()).toBeDefined();
+    expect(status().status).toBe('complete');
+  });
+
+  it('marks the build building only after it holds the lock', async () => {
+    setStatus({});
+    h.getTicket.mockImplementation(async () => {
+      expect(status().status).toBe('building');
+      expect(h.store.has('lock:ITS-1')).toBe(true);
+      return ticket;
+    });
+    await buildTicketBundle(job());
+  });
+
+  it('discards the result if the lock was taken over before writing', async () => {
+    setStatus({});
+    h.searchResolutions.mockImplementation(async () => {
+      // Another build takes over the lock mid-build (for example after this lease expired).
+      h.store.set('lock:ITS-1', lockRecord(300, 'taker-token'));
+      return [];
+    });
+    await buildTicketBundle(job());
+    expect(bundle()).toBeUndefined();
+    // The new owner's lock is not released by the loser.
+    expect((h.store.get('lock:ITS-1') as { ownerToken: string }).ownerToken).toBe('taker-token');
+  });
+
+  it('does not touch the lock when skipping a job owned by a newer build', async () => {
+    setStatus({ buildId: 'build-newer' });
+    h.store.set('lock:ITS-1', lockRecord(300));
+    await buildTicketBundle(job('build-a'));
+    expect(h.requeueTicketJob).not.toHaveBeenCalled();
+    expect(h.store.has('lock:ITS-1')).toBe(true);
+  });
+});
+
 describe('fingerprint and supersession (spec §8.2, §8.4)', () => {
   it('stores the fingerprint of the ticket the bundle was built from', async () => {
     setStatus({});
@@ -199,6 +280,19 @@ describe('fingerprint and supersession (spec §8.2, §8.4)', () => {
     await buildTicketBundle(job());
     expect(bundle()).toBeUndefined();
     expect(h.enqueueTicketBuild).toHaveBeenCalledWith('ITS-1', { source: 'jira-event' });
+  });
+
+  it('does not queue another build when a newer build already owns the status', async () => {
+    setStatus({});
+    h.getTicket.mockResolvedValueOnce(ticket).mockImplementationOnce(async () => {
+      // The edit that changed the ticket also fired an event, which queued a newer build.
+      setStatus({ buildId: 'build-newer', status: 'queued' });
+      return { ...ticket, summary: 'Changed' };
+    });
+    await buildTicketBundle(job('build-a'));
+    expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
+    expect(bundle()).toBeUndefined();
+    expect(status().buildId).toBe('build-newer');
   });
 
   it('marks the build failed if the re-fetch fails', async () => {

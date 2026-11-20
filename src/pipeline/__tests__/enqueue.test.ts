@@ -22,7 +22,7 @@ vi.mock('@forge/events', () => ({
   },
 }));
 
-import { BUILD_QUEUE_KEY, enqueueTicketBuild, onJiraIssueEvent } from '../enqueue';
+import { BUILD_QUEUE_KEY, enqueueTicketBuild, LOCK_RETRY_DELAY_SECONDS, onJiraIssueEvent, requeueTicketJob } from '../enqueue';
 import { BuildStatus } from '../../domain/types';
 
 const statusOf = (key: string) => h.store.get(`status:${key}`) as BuildStatus | undefined;
@@ -72,6 +72,22 @@ describe('onJiraIssueEvent', () => {
   it('records the actor as absent when the event has none', async () => {
     await onJiraIssueEvent({ issue: { key: 'ITS-1' } });
     expect(statusOf('ITS-1')!.actor).toEqual({ accountId: undefined, source: 'jira-event' });
+  });
+});
+
+describe('requeueTicketJob', () => {
+  const job = { kind: 'jira-ticket' as const, ticketKey: 'ITS-1', buildId: 'b1', requestedAt: 'r', actor: { source: 'jira-event' as const } };
+
+  it('pushes the same job with a 30 second delay and leaves the status alone', async () => {
+    await requeueTicketJob(job);
+    expect(LOCK_RETRY_DELAY_SECONDS).toBe(30);
+    expect(h.push).toHaveBeenCalledWith({ body: job, delayInSeconds: LOCK_RETRY_DELAY_SECONDS });
+    expect(statusOf('ITS-1')).toBeUndefined();
+  });
+
+  it('accepts a custom delay', async () => {
+    await requeueTicketJob(job, 5);
+    expect(h.push).toHaveBeenCalledWith({ body: job, delayInSeconds: 5 });
   });
 });
 

@@ -1,0 +1,10 @@
+{
+  // Type-checks integration tests and fixtures, which live outside src/ (the root tsconfig's rootDir).
+  // Used by `npm run typecheck`; never emits. Forge only bundles src/.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true
+  },
+  "include": ["../src/**/*", "./**/*"]
+}

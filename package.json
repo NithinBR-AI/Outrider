@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "lint": "eslint \"src/frontend/**/*.jsx\"",
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "tsc --noEmit -p . && tsc -p tests",
     "test": "vitest run",
     "coverage": "vitest run --coverage"
   },

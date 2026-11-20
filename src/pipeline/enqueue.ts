@@ -24,6 +24,18 @@ type JiraIssueEvent = {
   issue?: { key?: string };
 };
 
+// Delay before retrying a build that found the ticket locked by another build (agreed in 6c planning).
+export const LOCK_RETRY_DELAY_SECONDS = 30;
+
+/**
+ * Pushes the same job again after a delay, without creating a new build or touching its status.
+ * Used when another build holds the ticket lock. If a newer build has taken over the status by the
+ * time the retry runs, the retry skips itself, so retries end naturally.
+ */
+export async function requeueTicketJob(job: Extract<BuildJob, { kind: 'jira-ticket' }>, delaySeconds = LOCK_RETRY_DELAY_SECONDS): Promise<void> {
+  await queue.push({ body: job, delayInSeconds: delaySeconds });
+}
+
 /** Records a queued status for a new build and pushes the job. Shared by events and future callers. */
 export async function enqueueTicketBuild(ticketKey: string, actor: ActorContext): Promise<{ buildId: string; requestedAt: string }> {
   const buildId = randomUUID();

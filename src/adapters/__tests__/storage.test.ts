@@ -1,16 +1,43 @@
-// Storage tests with an in-memory KVS.
+// Storage tests with an in-memory KVS that mirrors the documented behavior we rely on:
+// FAIL_IF_EXISTS rejects when the key exists, and expired keys are NOT removed (KVS deletes
+// expired data asynchronously, so an expired lock record stays visible).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BuildStatus, ContextBundle } from '../../domain/types';
 
-const store = vi.hoisted(() => new Map<string, unknown>());
+const h = vi.hoisted(() => ({
+  store: new Map<string, unknown>(),
+  setOptions: [] as { key: string; options?: Record<string, unknown> }[],
+  failNextSet: null as null | Error,
+}));
 vi.mock('@forge/kvs', () => ({
   kvs: {
-    get: async (key: string) => store.get(key),
-    set: async (key: string, value: unknown) => void store.set(key, value),
+    get: async (key: string) => h.store.get(key),
+    set: async (key: string, value: unknown, options?: Record<string, unknown>) => {
+      h.setOptions.push({ key, options });
+      if (h.failNextSet) {
+        const e = h.failNextSet;
+        h.failNextSet = null;
+        throw e;
+      }
+      if (options?.keyPolicy === 'FAIL_IF_EXISTS' && h.store.has(key)) throw new Error('KVS conflict (code undocumented)');
+      h.store.set(key, value);
+    },
+    delete: async (key: string) => void h.store.delete(key),
   },
 }));
 
-import { getBundle, getStatus, putBundle, putStatus, updateStatusIf } from '../storage';
+import {
+  acquireLock,
+  getBundle,
+  getLock,
+  getStatus,
+  holdsLock,
+  LOCK_LEASE_SECONDS,
+  putBundle,
+  putStatus,
+  releaseLock,
+  updateStatusIf,
+} from '../storage';
 
 const status = (overrides: Partial<BuildStatus> = {}): BuildStatus => ({
   ticketKey: 'ITS-1',
@@ -21,13 +48,20 @@ const status = (overrides: Partial<BuildStatus> = {}): BuildStatus => ({
   ...overrides,
 });
 
-beforeEach(() => store.clear());
+const T0 = new Date('2026-11-21T10:00:00.000Z');
+const later = (seconds: number) => new Date(T0.getTime() + seconds * 1000);
+
+beforeEach(() => {
+  h.store.clear();
+  h.setOptions = [];
+  h.failNextSet = null;
+});
 
 describe('bundle and status keys', () => {
   it('namespaces keys per ticket', async () => {
     await putStatus(status());
     await putBundle({ ticketKey: 'ITS-1' } as ContextBundle);
-    expect([...store.keys()].sort()).toEqual(['bundle:ITS-1', 'status:ITS-1']);
+    expect([...h.store.keys()].sort()).toEqual(['bundle:ITS-1', 'status:ITS-1']);
   });
 
   it('returns undefined for unknown tickets', async () => {
@@ -74,5 +108,69 @@ describe('updateStatusIf (best-effort guard, spec §6.2)', () => {
     await putStatus(status({ status: 'building' }));
     await updateStatusIf('ITS-1', 'build-a', ['building'], { status: 'failed', error: 'build-failed' });
     expect((await getStatus('ITS-1'))!.error).toBe('build-failed');
+  });
+});
+
+describe('per-ticket lock (spec §8.5)', () => {
+  it('acquires a free lock with an atomic create-if-absent write and a TTL', async () => {
+    const lock = await acquireLock('ITS-1', 'build-a', 'token-a', T0);
+    expect(lock).toEqual({ buildId: 'build-a', ownerToken: 'token-a', acquiredAt: T0.toISOString(), expiresAt: later(LOCK_LEASE_SECONDS).toISOString() });
+    expect(h.setOptions[0]).toEqual({ key: 'lock:ITS-1', options: { keyPolicy: 'FAIL_IF_EXISTS', ttl: { unit: 'SECONDS', value: LOCK_LEASE_SECONDS } } });
+    expect(await getLock('ITS-1')).toEqual(lock);
+  });
+
+  it('outlives the consumer timeout, so a running build never outlives its lease', () => {
+    expect(LOCK_LEASE_SECONDS).toBeGreaterThan(600);
+  });
+
+  it('refuses a lock another acquisition holds', async () => {
+    await acquireLock('ITS-1', 'build-a', 'token-a', T0);
+    expect(await acquireLock('ITS-1', 'build-b', 'token-b', later(60))).toBeUndefined();
+    expect((await getLock('ITS-1'))!.ownerToken).toBe('token-a');
+  });
+
+  it('refuses a second copy of the same build (different token)', async () => {
+    await acquireLock('ITS-1', 'build-a', 'token-a1', T0);
+    expect(await acquireLock('ITS-1', 'build-a', 'token-a2', later(1))).toBeUndefined();
+  });
+
+  it('takes over an expired lock that KVS has not swept yet (crash recovery)', async () => {
+    await acquireLock('ITS-1', 'crashed-build', 'token-dead', T0);
+    const lock = await acquireLock('ITS-1', 'build-b', 'token-b', later(LOCK_LEASE_SECONDS + 1));
+    expect(lock?.ownerToken).toBe('token-b');
+    expect((await getLock('ITS-1'))!.ownerToken).toBe('token-b');
+  });
+
+  it('does not take over a lease that expires exactly now', async () => {
+    await acquireLock('ITS-1', 'build-a', 'token-a', T0);
+    expect(await acquireLock('ITS-1', 'build-b', 'token-b', later(LOCK_LEASE_SECONDS - 1))).toBeUndefined();
+  });
+
+  it('rethrows storage errors that are not a conflict', async () => {
+    h.failNextSet = new Error('RATE_LIMIT_EXCEEDED');
+    await expect(acquireLock('ITS-1', 'build-a', 'token-a', T0)).rejects.toThrow('RATE_LIMIT_EXCEEDED');
+  });
+
+  it('reports whether this acquisition still holds an unexpired lease', async () => {
+    await acquireLock('ITS-1', 'build-a', 'token-a', T0);
+    expect(await holdsLock('ITS-1', 'token-a', later(10))).toBe(true);
+    expect(await holdsLock('ITS-1', 'token-other', later(10))).toBe(false);
+    expect(await holdsLock('ITS-1', 'token-a', later(LOCK_LEASE_SECONDS + 1))).toBe(false);
+    expect(await holdsLock('ITS-2', 'token-a', later(10))).toBe(false);
+  });
+
+  it('releases only a lock this acquisition owns', async () => {
+    await acquireLock('ITS-1', 'build-a', 'token-a', T0);
+    expect(await releaseLock('ITS-1', 'token-other')).toBe(false);
+    expect(await getLock('ITS-1')).toBeDefined();
+    expect(await releaseLock('ITS-1', 'token-a')).toBe(true);
+    expect(await getLock('ITS-1')).toBeUndefined();
+    expect(await releaseLock('ITS-1', 'token-a')).toBe(false);
+  });
+
+  it('can be acquired again after release', async () => {
+    await acquireLock('ITS-1', 'build-a', 'token-a', T0);
+    await releaseLock('ITS-1', 'token-a');
+    expect((await acquireLock('ITS-1', 'build-b', 'token-b', later(5)))?.ownerToken).toBe('token-b');
   });
 });
