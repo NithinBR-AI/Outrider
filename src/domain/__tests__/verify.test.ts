@@ -3,7 +3,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { citedSources, findSpan, LiveSource, MIN_SPAN_CHARS, normalizeText, normalizeWord, qualifies, sourceKey, toWords, verifyClaims } from '../verify';
+import { citedSources, findSpan, LiveSource, MIN_COVERAGE, MIN_SPAN_CHARS, normalizeText, normalizeWord, qualifies, sourceKey, spanCoverage, toWords, verifyClaims } from '../verify';
 import { adfToText } from '../extract';
 import { GeneratedClaim, SourceRef } from '../types';
 
@@ -89,6 +89,64 @@ describe('required verifier cases', () => {
     expect(cachedExcerpt).toContain('SSL certificate on auth-lb-01'); // would have matched the cached copy
     expect(r.claims.map((c) => c.text)).toEqual(['a firewall rule blocked the health check']);
     expect(r.rejected).toEqual([{ text: 'SSL certificate on auth-lb-01 expired at 02:00 UTC', reason: 'no-matching-span' }]);
+  });
+});
+
+// ---- Coverage rule (§13.2 step 6a, §13.5) ----
+
+describe('coverage rule', () => {
+  const SSL = 'Root cause: SSL certificate on auth-lb-01 expired at 02:00 UTC. Resolution: renewed certificate via Let\'s Encrypt and reloaded nginx.';
+
+  it('MIN_COVERAGE is one half', () => {
+    expect(MIN_COVERAGE).toBe(0.5);
+  });
+
+  it('a long claim whose only qualifying span covers too little of it is rejected with no-matching-span', () => {
+    const text = 'Agents should escalate to the platform group, page the database owner, freeze deployments and renew certificate via Let\'s Encrypt';
+    expect(findSpan(text, SSL)).not.toBeNull(); // the old rule alone would have shown it
+    expect(spanCoverage(text, SSL)).toBeLessThan(MIN_COVERAGE);
+    expect(verifyClaims([claim(text, ref('ITO-9642'))], live(['ITO-9642', SSL]))).toEqual({ claims: [], rejected: [{ text, reason: 'no-matching-span' }] });
+  });
+
+  it('two separate qualifying spans that together reach MIN_COVERAGE pass, though neither does alone', () => {
+    const text = 'SSL certificate on auth-lb-01 expired; marketing approved quarterly budgets; renewed certificate via Let\'s Encrypt';
+    const firstHalfOnly = 'Root cause: SSL certificate on auth-lb-01 expired at 02:00 UTC.';
+    const secondHalfOnly = 'Resolution: renewed certificate via Let\'s Encrypt and reloaded nginx.';
+    expect(spanCoverage(text, firstHalfOnly)).toBeLessThan(MIN_COVERAGE);
+    expect(spanCoverage(text, secondHalfOnly)).toBeLessThan(MIN_COVERAGE);
+    expect(spanCoverage(text, SSL)).toBeGreaterThanOrEqual(MIN_COVERAGE);
+    expect(verifyClaims([claim(text, ref('ITO-9642'))], live(['ITO-9642', SSL])).claims).toHaveLength(1);
+  });
+
+  it('coverage exactly at MIN_COVERAGE passes; just below fails', () => {
+    const source = 'Update: nginx certificate expired overnight.';
+    // Distinctive words: nginx, certificate, expired | database, replica, lagging. Three of six covered.
+    const atThreshold = 'nginx certificate expired; database replica lagging';
+    // One more uncovered distinctive word: three of seven.
+    const belowThreshold = 'nginx certificate expired; database replica lagging behind';
+    expect(spanCoverage(atThreshold, source)).toBe(0.5);
+    expect(spanCoverage(belowThreshold, source)).toBeLessThan(0.5);
+    expect(verifyClaims([claim(atThreshold, ref('X-1'))], live(['X-1', source])).claims).toHaveLength(1);
+    expect(verifyClaims([claim(belowThreshold, ref('X-1'))], live(['X-1', source])).rejected).toHaveLength(1);
+  });
+
+  it('a claim quoting its source in full has coverage 1; a claim with no distinctive words has coverage 0', () => {
+    expect(spanCoverage('Renewed certificate via Let\'s Encrypt and reloaded nginx.', SSL)).toBe(1);
+    expect(spanCoverage('it is what it was', SSL)).toBe(0);
+    expect(spanCoverage('', SSL)).toBe(0);
+  });
+
+  it('filler words do not count: only distinctive words are measured', () => {
+    // Same covered phrase, padded with stopwords only: coverage is unchanged.
+    expect(spanCoverage('and so it is that the renewed certificate via Let\'s Encrypt was', SSL)).toBe(spanCoverage('renewed certificate via Let\'s Encrypt', SSL));
+  });
+
+  it('regression (step 8c prompt test): advice that shares one short phrase with the real SSL fix is rejected', () => {
+    const sslFix = [fixture.resolutionSearch.issues, fixture.incidentSearch.issues, fixture.requesterSearch.issues].flat().find((i: { key: string }) => i.key === 'ITO-9642');
+    const sourceText = [sslFix.fields.summary, adfToText(sslFix.fields.description), ...commentsOf('ITO-9642')].join('\n');
+    const text = 'The agent could check whether the incident has been updated with new findings, confirm if certificate expiry alerts are active, and ensure the requester is directed to the StatusPage for updates.';
+    expect(findSpan(text, sourceText)?.normalizedSpan).toBe('certificate expiry');
+    expect(verifyClaims([claim(text, ref('ITO-9642'))], live(['ITO-9642', sourceText])).rejected).toEqual([{ text, reason: 'no-matching-span' }]);
   });
 });
 

@@ -3,7 +3,8 @@
 // 1. Skip if a newer build owns the status, or this build already finished (duplicate delivery).
 // 2. Acquire the per-ticket lock (§8.5). If another build holds it, re-queue this job after a delay.
 // 3. Fetch the ticket, retrieve incidents and resolutions concurrently with failure isolation,
-//    rank them (domain/score.ts) and apply the stored-candidate limit.
+//    rank them (domain/score.ts) and apply the stored-candidate limit. Then generate the summary claims
+//    (adapters/mantle.ts), or reuse the previous ones if the prompt is unchanged. Failure: no summary.
 // 4. Re-fetch the ticket. If its fingerprint changed, the result is stale: discard it, mark the build
 //    superseded and queue a fresh build (§8.4).
 // 5. Write guards (§8.6): write only if this build still holds the lock and still owns the status.
@@ -12,12 +13,13 @@
 // All of this is best-effort, not strict mutual exclusion (§8.5, §8.6, §18.9). Read-time
 // authorization (§16) is step 6c-2.
 import { randomUUID } from 'crypto';
-import { BuildJob, ContextBundle } from '../domain/types';
+import { BuildJob, ContextBundle, Incident, PersistedSummary, Resolution, Ticket } from '../domain/types';
 import { ticketFingerprint } from '../domain/extract';
 import { limitCandidates } from '../domain/score';
-import { demoSummaryFor } from '../domain/demoSummary';
+import { buildGenerationPrompt, promptHash } from '../domain/generate';
 import * as jira from '../adapters/jira';
-import { acquireLock, getStatus, holdsLock, putBundle, releaseLock, updateStatusIf } from '../adapters/storage';
+import { generateClaims } from '../adapters/mantle';
+import { acquireLock, getBundle, getStatus, holdsLock, putBundle, releaseLock, updateStatusIf } from '../adapters/storage';
 import { enqueueTicketBuild, requeueTicketJob } from './enqueue';
 
 type TicketJob = Extract<BuildJob, { kind: 'jira-ticket' }>;
@@ -71,6 +73,34 @@ export async function buildTicketBundle(job: TicketJob): Promise<void> {
   }
 }
 
+/**
+ * Generated claims for the bundle (spec §12.6, §13.6), stored unverified; every read verifies them for
+ * that viewer. Returns undefined, so the bundle has no summary, when there are no sources, when the model
+ * returns no claims, or on any generation failure (§13.3). A failure is logged as a short code only and
+ * does not mark the bundle partial: partial and failures describe sources.
+ * If the previous bundle's live summary came from an identical prompt, its claims are reused without a call.
+ */
+async function summarize(ticket: Ticket, incidents: Incident[], resolutions: Resolution[]): Promise<PersistedSummary | undefined> {
+  const prompt = buildGenerationPrompt(ticket, incidents, resolutions);
+  if (!prompt) return undefined;
+  const hash = promptHash(prompt);
+  const previous = await getBundle(ticket.key).catch(() => undefined);
+  if (previous?.summary?.origin === 'llm' && previous.summary.promptHash === hash) {
+    console.log(`summary for ${ticket.key} reused: prompt unchanged`);
+    return previous.summary;
+  }
+  try {
+    const started = Date.now();
+    const result = await generateClaims(prompt);
+    console.log(`summary for ${ticket.key}: ${result.claims.length} claims from ${result.model} in ${Date.now() - started} ms (tokens ${result.usage?.prompt_tokens ?? '?'} in / ${result.usage?.completion_tokens ?? '?'} out)`);
+    if (result.claims.length === 0) return undefined;
+    return { origin: 'llm', promptHash: hash, generatedClaims: result.claims };
+  } catch (err) {
+    console.warn(`summary for ${ticket.key} not generated: ${(err as Error).message}`);
+    return undefined;
+  }
+}
+
 async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
   const { ticketKey, buildId } = job;
 
@@ -87,6 +117,9 @@ async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
   const resolutionKeys = new Set(resolutions.map((r) => r.source.id));
   const dedupedIncidents = incidents.filter((i) => !resolutionKeys.has(i.source.id));
   const [keptIncidents, keptResolutions] = limitCandidates([dedupedIncidents, resolutions]);
+
+  // Before the stale check, so a ticket edited while the model runs still discards this result.
+  const summary = await summarize(ticket, keptIncidents, keptResolutions);
 
   // Stale-build protection (§8.4): the ticket must be unchanged since retrieval started.
   const latestTicket = await jira.getTicket(ticketKey);
@@ -125,9 +158,6 @@ async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
     partial: failures.length > 0,
     failures,
   };
-  // Generated claims. Until LLM generation exists (step 8c), only the demo ticket has a canned summary
-  // (spec §13.6). Claims are stored unverified; every read verifies them for that viewer.
-  const summary = demoSummaryFor(ticketKey);
   if (summary) bundle.summary = summary;
   await putBundle(bundle);
   await updateStatusIf(ticketKey, buildId, ['building'], { status: 'complete' });

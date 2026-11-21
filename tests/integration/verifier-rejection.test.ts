@@ -1,14 +1,17 @@
 // Mandatory verifier-rejection test (spec §19.6). Release blocker; the acceptance test for the P0
-// differentiator. Uses the real canned demo summary (src/domain/demoSummary.ts) and the real recorded
-// demo-site text of the cited issues (tests/fixtures/jira-demo-site.json), through the real panel and MCP
-// read paths. Only Jira and KVS are simulated, as per-viewer permission tables.
+// differentiator. Uses fixed test claims: a recorded Qwen3-235B response for ITS-6265
+// (tests/fixtures/mantle-its-6265.json) parsed by the real parseGeneratedClaims, plus one uncited claim
+// added here. Checked against the real recorded demo-site text of the cited issues
+// (tests/fixtures/jira-demo-site.json), through the real panel and MCP read paths. Only Jira and KVS are
+// simulated, as per-viewer permission tables. Nothing here ships in the app (§13.6).
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ContextBundle, SourceRef, ViewerBundle } from '../../src/domain/types';
+import { ContextBundle, GeneratedClaim, PersistedSummary, SourceRef, ViewerBundle } from '../../src/domain/types';
 
-// Typed loosely on purpose: raw recorded Jira JSON.
+// Typed loosely on purpose: raw recorded JSON.
 const fixture: any = JSON.parse(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'jira-demo-site.json'), 'utf8'));
+const recorded: any = JSON.parse(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'mantle-its-6265.json'), 'utf8'));
 
 const h = vi.hoisted(() => ({
   store: new Map<string, unknown>(),
@@ -44,7 +47,7 @@ vi.mock('../../src/adapters/jira', () => ({
 
 import { getPanelContext } from '../../src/resolvers/panel';
 import { CLAIMS_NOTE, getTicketContext as mcpGetTicketContext, McpSummary, UNSUPPORTED_CLAIM_NOTE } from '../../src/mcp/tools';
-import { DEMO_SUMMARIES } from '../../src/domain/demoSummary';
+import { parseGeneratedClaims } from '../../src/domain/generate';
 import { adfToText } from '../../src/domain/extract';
 import { AUTH_JIRA_CHECK_FAILED } from '../../src/domain/authorize';
 
@@ -56,14 +59,21 @@ const ITO_9642 = issueText(
   fixture.comments['ITO-9642'].comments.map((c: { body: unknown }) => adfToText(c.body)),
 );
 
-const DEMO = DEMO_SUMMARIES['ITS-6265'];
-const claimText = (id: string) => DEMO.generatedClaims.find((c) => c.claimId === id)!.text;
-const UNSUPPORTED = claimText('demo-4-unsupported');
-const UNCITED = claimText('demo-5-uncited');
+// The labels the prompt gave the model, mapped back to source references as the builder does.
+const refFor = (id: string): SourceRef => ({ kind: 'jira-issue', id, url: `https://one-atlas-edlg.atlassian.net/browse/${id}`, title: id, updatedAt: 'built' });
+const labels = Object.fromEntries(Object.entries(recorded.labels as Record<string, string>).map(([label, id]) => [label, refFor(id)]));
+const GENERATED = parseGeneratedClaims(recorded.arguments, labels);
+// Added for case 6 (§19.6): a claim with no citation. Not part of the recording.
+const UNCITED: GeneratedClaim = { claimId: 'test-uncited', text: 'Customers using the mobile app are not affected.', citedSourceRef: null };
+const SUMMARY: PersistedSummary = { origin: 'llm', promptHash: 'recorded', generatedClaims: [...GENERATED, UNCITED] };
+
+const claimTo = (id: string) => GENERATED.filter((c) => c.citedSourceRef?.id === id).map((c) => c.text);
+// The one claim the recorded run had rejected: a reworded statement of the fix (spec §13.2 step 6a).
+const REWORDED = "Certificate was renewed via Let's Encrypt and nginx reloaded to resolve the issue.";
 
 const stored: ContextBundle = {
   ticketKey: 'ITS-6265',
-  builtAt: '2026-11-21T10:00:00.000Z',
+  builtAt: '2026-11-21T12:28:57.975Z',
   buildId: 'b1',
   ticketFingerprint: 'fp',
   incidents: [],
@@ -72,7 +82,7 @@ const stored: ContextBundle = {
   services: [],
   partial: false,
   failures: [],
-  summary: DEMO,
+  summary: SUMMARY,
 };
 
 const panelSummary = async () => {
@@ -84,7 +94,7 @@ beforeEach(() => {
   h.store.clear();
   h.store.set('bundle:ITS-6265', stored);
   h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { source: 'jira-event' } });
-  // The demo viewer: can see the ticket and both cited sources (as user A on the demo site).
+  // The test viewer: can see the ticket and both cited sources (as user A on the demo site).
   h.canSee = new Set(['ITS-6265', 'ITO-9647', 'ITO-9642']);
   h.liveText = new Map([['ITO-9647', ITO_9647], ['ITO-9642', ITO_9642]]);
   h.liveFetches = [];
@@ -93,17 +103,18 @@ beforeEach(() => {
 });
 
 describe('verifier rejection (spec §19.6)', () => {
-  it('1. the canned fixture cites sources authorized for the demo viewer', () => {
-    const cited = DEMO.generatedClaims.filter((c) => c.citedSourceRef).map((c) => c.citedSourceRef!.id);
+  it('1. the fixed test claims cite sources authorized for the test viewer', () => {
+    expect(GENERATED).toHaveLength(6);
+    const cited = GENERATED.map((c) => c.citedSourceRef!.id);
     expect(new Set(cited)).toEqual(new Set(['ITO-9647', 'ITO-9642']));
     for (const id of cited) expect(h.canSee.has(id)).toBe(true);
-    expect(DEMO.origin).toBe('demo-fixture');
+    expect(SUMMARY.origin).toBe('llm');
   });
 
-  it('2-3. the claim with no qualifying span is absent from the displayed claims', async () => {
+  it('2-3. the claim with no qualifying coverage is absent from the displayed claims', async () => {
     const s = (await panelSummary())!;
-    expect(s.claims.map((c) => c.text)).not.toContain(UNSUPPORTED);
-    expect(s.claims).toHaveLength(3);
+    expect(s.claims.map((c) => c.text)).not.toContain(REWORDED);
+    expect(s.claims).toHaveLength(5);
     for (const c of s.claims) {
       expect(c.grounded).toBe(true);
       expect(h.liveText.get(c.source.id)).toContain(c.span); // every shown claim carries a verbatim span
@@ -117,33 +128,33 @@ describe('verifier rejection (spec §19.6)', () => {
 
   it('5. the rejection reason is inspectable and reports no-matching-span', async () => {
     const s = (await panelSummary())!;
-    expect(s.rejected).toEqual([{ text: UNSUPPORTED, reason: 'no-matching-span' }]);
+    expect(s.rejected).toEqual([{ text: REWORDED, reason: 'no-matching-span' }]);
   });
 
   it('6. a claim with no citation is omitted entirely, with no effect on the counts', async () => {
     const s = (await panelSummary())!;
-    const json = JSON.stringify(s);
-    expect(json).not.toContain(UNCITED);
-    expect(s.claims.length + s.rejected.length).toBe(DEMO.generatedClaims.length - 1);
+    expect(JSON.stringify(s)).not.toContain(UNCITED.text);
+    expect(s.claims.length + s.rejected.length).toBe(SUMMARY.generatedClaims.length - 1);
   });
 
   it('7. a claim whose cited source is not authorized is omitted entirely, with no effect on the counts', async () => {
     // The viewer loses access to the SSL fix (ITO-9642); the incident (ITO-9647) stays visible.
     h.canSee.delete('ITO-9642');
     const s = (await panelSummary())!;
-    expect(s.claims.map((c) => c.source.id)).toEqual(['ITO-9647']);
-    expect(s.rejected).toEqual([{ text: UNSUPPORTED, reason: 'no-matching-span' }]); // unchanged
+    expect(s.claims.map((c) => c.text)).toEqual(claimTo('ITO-9647'));
+    // The rejected claim cited ITO-9642, so it is now omitted too: no text, no rejection, no count.
+    expect(s.rejected).toEqual([]);
     const json = JSON.stringify(s);
-    for (const omitted of DEMO.generatedClaims.filter((c) => c.citedSourceRef?.id === 'ITO-9642')) expect(json).not.toContain(omitted.text);
+    for (const text of claimTo('ITO-9642')) expect(json).not.toContain(text);
     expect(json).not.toContain('ITO-9642');
   });
 
   it('8. matching uses the currently retrieved text, not a cached copy', async () => {
-    // The SSL fix comment is edited after the bundle was built: the old wording is gone.
-    h.liveText.set('ITO-9642', 'Login service failure due to expired SSL certificate\nThe fix was rolled back; root cause under review.');
+    // ITO-9642 is rewritten after the bundle was built: none of its old wording remains.
+    h.liveText.set('ITO-9642', 'Closed as a duplicate. See the post-incident review for details.');
     const s = (await panelSummary())!;
-    expect(s.claims.map((c) => c.source.id)).toEqual(['ITO-9647']); // ITO-9642 claims no longer match
-    expect(s.rejected.map((r) => r.text)).toEqual(expect.arrayContaining([claimText('demo-2'), UNSUPPORTED]));
+    expect(s.claims.map((c) => c.source.id)).toEqual(['ITO-9647', 'ITO-9647', 'ITO-9647']); // ITO-9642 claims no longer match
+    expect(s.rejected.map((r) => r.text)).toEqual(claimTo('ITO-9642'));
     expect(h.liveFetches[h.liveFetches.length - 1]).toEqual(['ITO-9647', 'ITO-9642']); // fetched live on this read
   });
 });
@@ -159,7 +170,7 @@ describe('verifier on the read path', () => {
     const s = await getPanelContext('ITS-6265');
     expect(s.state).toBe('complete');
     expect((s as { bundle: ViewerBundle }).bundle.summary).toBeUndefined();
-    expect(JSON.stringify(s)).not.toContain('auth service');
+    expect(JSON.stringify(s)).not.toContain('503 errors');
   });
 
   it('if the live fetch fails, no claim is shown and the response is marked partial', async () => {
@@ -175,7 +186,8 @@ describe('verifier on the read path', () => {
     const json = JSON.stringify(s);
     expect(json).not.toContain('generatedClaims');
     expect(json).not.toContain('citedSourceRef');
-    expect(json).not.toContain('demo-4-unsupported');
+    expect(json).not.toContain('promptHash');
+    expect(json).not.toContain('test-uncited');
   });
 
   it('MCP returns the same verified claims and rejections as the panel, annotated for agents', async () => {
@@ -183,15 +195,17 @@ describe('verifier on the read path', () => {
     const mcp = (await mcpGetTicketContext('ITS-6265', 'user-a')) as { summary?: McpSummary };
     expect(mcp.summary!.claims).toEqual(panel.claims);
     expect(mcp.summary!.unsupportedClaims.map((u) => u.text)).toEqual(panel.rejected.map((r) => r.text));
-    expect(mcp.summary!.unsupportedClaims).toEqual([{ text: UNSUPPORTED, reason: 'no-matching-span', note: UNSUPPORTED_CLAIM_NOTE }]);
+    expect(mcp.summary!.unsupportedClaims).toEqual([{ text: REWORDED, reason: 'no-matching-span', note: UNSUPPORTED_CLAIM_NOTE }]);
     expect(mcp.summary!.claimsNote).toBe(CLAIMS_NOTE);
-    expect(mcp.summary!.origin).toBe('demo-fixture');
+    expect(mcp.summary!.origin).toBe('llm');
     expect(mcp.summary).not.toHaveProperty('rejected');
   });
 
-  it('MCP tells agents plainly that unsupported claims are not from any source', () => {
-    expect(UNSUPPORTED_CLAIM_NOTE).toMatch(/not supported by any source/);
-    expect(UNSUPPORTED_CLAIM_NOTE).toMatch(/do not present it as a fact/);
+  it('MCP tells agents an unsupported claim could not be matched, without saying the source lacks the fact', () => {
+    expect(UNSUPPORTED_CLAIM_NOTE).toMatch(/could not be matched/);
+    expect(UNSUPPORTED_CLAIM_NOTE).toMatch(/do not present it as a fact/i);
+    // The rejected claim here is a reworded true statement, so the note must not claim the source lacks it.
+    expect(UNSUPPORTED_CLAIM_NOTE).not.toMatch(/not supported by any source/);
     expect(CLAIMS_NOTE).toMatch(/not proof that the claim is true/);
   });
 
@@ -201,7 +215,7 @@ describe('verifier on the read path', () => {
     expect(mcp.summary).toBeUndefined();
   });
 
-  it('marks the summary as a demo fixture so the narration can say so', async () => {
-    expect((await panelSummary())!.origin).toBe('demo-fixture');
+  it('passes the summary origin through: every summary is generated live', async () => {
+    expect((await panelSummary())!.origin).toBe('llm');
   });
 });

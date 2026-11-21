@@ -34,8 +34,11 @@ export type TicketNotAccessible = {
 // rejected as "mentioned in some notes". These notes make the meaning of each list impossible to miss.
 export const CLAIMS_NOTE =
   'Each claim shares a verbatim span with its cited source (see span and source). This is a text match, not proof that the claim is true.';
+// Matches the panel label "Removed: couldn't match this to the source's wording". A rejected claim may be
+// unsupported, or a true statement the model reworded too far (spec §13.2 step 6a), so the note must not
+// say the source lacks it.
 export const UNSUPPORTED_CLAIM_NOTE =
-  'Generated claim with no matching text in its cited source. It is not supported by any source; do not present it as a fact or as something a source mentions.';
+  "Generated claim whose wording could not be matched to its cited source, so Outrider does not show it as supported. Do not present it as a fact or as something a source says; if it matters, check the sources directly.";
 
 /** The verified summary as MCP callers receive it. */
 export type McpSummary = {

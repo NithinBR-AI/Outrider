@@ -60,9 +60,11 @@ export type GeneratedClaim = {
 
 export type PersistedSummary = {
   generatedClaims: GeneratedClaim[];
-  // Where the claims came from. 'demo-fixture' is the canned summary spec §13.6 requires for the demo;
-  // the narration and write-up must say when a fixture is shown. 'llm' arrives with step 8c.
-  origin?: 'demo-fixture' | 'llm';
+  // Where the claims came from. Always 'llm': generated live (spec §12.6). No canned summary ships (§13.6).
+  origin?: 'llm';
+  // For 'llm': hash of the exact prompt the claims came from. A rebuild with an identical prompt reuses
+  // these claims instead of calling the model again (spec §12.6).
+  promptHash?: string;
 };
 
 export type ContextBundle = {

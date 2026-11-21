@@ -11,11 +11,16 @@
 // - Normalization (applied identically to claim and source): typographic quotes and dashes to ASCII,
 //   Markdown markers removed, case-folded, whitespace collapsed. Quote and dash folding is a small,
 //   documented addition to §13.2 step 4.
+// Added in step 8c (§13.2 step 6a): qualifying spans must also cover at least MIN_COVERAGE of the claim's
+// distinctive words. Known cost: matching is on words, not meaning, so a correctly reworded claim can fail.
 import { tokenize } from './extract';
 import { Claim, GeneratedClaim, RejectedClaim, SourceRef, SummaryResponse } from './types';
 
 export const MIN_SPAN_CHARS = 12;
 export const MIN_DISTINCTIVE_WORDS = 2;
+// Share of a claim's distinctive words that qualifying spans must cover (§13.2 step 6a). Without it, a long
+// claim passed on one short shared phrase ("certificate expiry", 2 of 31 words in the step 8c prompt test).
+export const MIN_COVERAGE = 0.5;
 
 /** Folds typographic punctuation so "That’s" in a source matches "That's" in a claim. */
 function foldPunctuation(s: string): string {
@@ -73,14 +78,18 @@ export function qualifies(normalizedSpan: string): boolean {
  * Every maximal common run is considered, so a long boilerplate run cannot hide a shorter real one.
  * Ties go to the earliest run in the source, so results are deterministic.
  */
-export function findSpan(claimText: string, sourceText: string): SpanMatch | null {
-  const a = toWords(claimText);
-  const b = toWords(sourceText);
-  if (a.length === 0 || b.length === 0) return null;
+/** One maximal qualifying run of words shared by claim and source, as word index ranges [start, end). */
+type Run = { startA: number; endA: number; startB: number; endB: number; normalized: string };
 
-  // run[j] = length of the common run ending at a[i-1], b[j-1] (rolling over i).
+/**
+ * Every maximal run of consecutive words that the claim and the source share and that qualifies
+ * (MIN_SPAN_CHARS and MIN_DISTINCTIVE_WORDS). Shared by findSpan and spanCoverage, so the span the panel
+ * shows and the coverage rule always agree on what counts as a match.
+ */
+function qualifyingRuns(a: Word[], b: Word[]): Run[] {
+  const runs: Run[] = [];
+  // cur[j] = length of the common run ending at a[i-1], b[j-1] (rolling over i).
   let prev = new Uint32Array(b.length + 1);
-  let best: { length: number; endB: number; normalized: string } | null = null;
   for (let i = 1; i <= a.length; i++) {
     const cur = new Uint32Array(b.length + 1);
     for (let j = 1; j <= b.length; j++) {
@@ -92,18 +101,44 @@ export function findSpan(claimText: string, sourceText: string): SpanMatch | nul
       if (len === 0) continue;
       const extends_ = i < a.length && j < b.length && a[i].norm === b[j].norm;
       if (extends_) continue;
-      const words = b.slice(j - len, j);
-      const normalized = words.map((w) => w.norm).join(' ');
-      if (!qualifies(normalized)) continue;
-      const better = !best || normalized.length > best.normalized.length || (normalized.length === best.normalized.length && j - len < best.endB - best.length);
-      if (better) best = { length: len, endB: j, normalized };
+      const normalized = b.slice(j - len, j).map((w) => w.norm).join(' ');
+      if (qualifies(normalized)) runs.push({ startA: i - len, endA: i, startB: j - len, endB: j, normalized });
     }
     prev = cur;
   }
+  return runs;
+}
+
+/**
+ * Finds the longest qualifying run of consecutive words shared by the claim and the source (§13.2 step 5).
+ * Returns the span as it appears in the ORIGINAL source text (case and punctuation preserved), or null.
+ * Every maximal common run is considered, so a long boilerplate run cannot hide a shorter real one.
+ * Ties go to the earliest run in the source, so results are deterministic.
+ */
+export function findSpan(claimText: string, sourceText: string): SpanMatch | null {
+  const b = toWords(sourceText);
+  let best: Run | null = null;
+  for (const run of qualifyingRuns(toWords(claimText), b)) {
+    const better = !best || run.normalized.length > best.normalized.length || (run.normalized.length === best.normalized.length && run.startB < best.startB);
+    if (better) best = run;
+  }
   if (!best) return null;
-  const first = b[best.endB - best.length];
-  const last = b[best.endB - 1];
-  return { span: sourceText.slice(first.start, last.end), normalizedSpan: best.normalized };
+  return { span: sourceText.slice(b[best.startB].start, b[best.endB - 1].end), normalizedSpan: best.normalized };
+}
+
+/**
+ * Share (0..1) of the claim's distinctive words that lie inside qualifying runs shared with the source
+ * (§13.2 step 6a). Several separate runs may each contribute. Distinctive words are those tokenize keeps
+ * (no stopwords or short words), counted once each, so filler words neither help nor hurt.
+ */
+export function spanCoverage(claimText: string, sourceText: string): number {
+  const a = toWords(claimText);
+  const distinctive = new Set(tokenize(a.map((w) => w.norm).join(' ')));
+  if (distinctive.size === 0) return 0;
+  const covered = new Array<boolean>(a.length).fill(false);
+  for (const run of qualifyingRuns(a, toWords(sourceText))) for (let k = run.startA; k < run.endA; k++) covered[k] = true;
+  const coveredWords = new Set(tokenize(a.filter((_, k) => covered[k]).map((w) => w.norm).join(' ')));
+  return [...distinctive].filter((w) => coveredWords.has(w)).length / distinctive.size;
 }
 
 /** The current text of one cited source, already authorized for the viewer and freshly retrieved. */
@@ -119,8 +154,10 @@ export const sourceKey = (ref: Pick<SourceRef, 'kind' | 'id'>) => `${ref.kind}:$
  * Order matters and is authoritative (§13.2):
  * 1. No citation, or the cited source is not in `live` (unresolvable or unauthorized): the claim is
  *    omitted entirely. It is neither shown nor rejected, so its existence is never disclosed.
- * 2. Otherwise the claim is matched against the live text: a qualifying span keeps it (with the span and
- *    the live source reference); no span rejects it with reason no-matching-span.
+ * 2. Otherwise the claim is matched against the live text. It is kept (with its longest span and the live
+ *    source reference) only if a qualifying span exists AND qualifying spans cover at least MIN_COVERAGE
+ *    of its distinctive words. Otherwise it is rejected with reason no-matching-span, the only reason a
+ *    viewer ever sees.
  */
 export function verifyClaims(claims: GeneratedClaim[], live: Map<string, LiveSource>): SummaryResponse {
   const kept: Claim[] = [];
@@ -130,7 +167,7 @@ export function verifyClaims(claims: GeneratedClaim[], live: Map<string, LiveSou
     const source = live.get(sourceKey(claim.citedSourceRef));
     if (!source) continue;
     const match = findSpan(claim.text, source.text);
-    if (match) kept.push({ text: claim.text, source: source.ref, span: match.span, grounded: true });
+    if (match && spanCoverage(claim.text, source.text) >= MIN_COVERAGE) kept.push({ text: claim.text, source: source.ref, span: match.span, grounded: true });
     else rejected.push({ text: claim.text, reason: 'no-matching-span' });
   }
   return { claims: kept, rejected };

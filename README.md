@@ -31,7 +31,7 @@ Built on Atlassian Forge for Codegeist 2026.
 | 7 | Source-span verifier (tested against real demo-site text; used by the summary in step 8) | ✅ |
 | 8a | Verified summary on the read path (panel and MCP), canned demo summary, verifier-rejection acceptance test | ✅ (development) |
 | 8b | Summary and rejected-claim counter in the panel, with the matching source text per claim | ✅ (development) |
-| 8c | LLM summary generation | 🔜 |
+| 8c | Live LLM summary generation (Amazon Bedrock via Mantle), coverage rule in the verifier, canned demo summary removed | ✅ (development) |
 | 9–14 | Remaining MCP tools, per-site configuration, Confluence, TWG, demo | 🔜 |
 
 ## Install
@@ -52,8 +52,9 @@ The install link above installs the **production** environment, which is updated
 
 1. Go to [IT Support queue](https://one-atlas-edlg.atlassian.net/jira/servicedesk/projects/ITS/queues/custom/1)
 2. Open the demo ticket **ITS-6265** ("Cannot log in - getting error on login page")
-3. The **Outrider** panel in the right-side context section shows the related active incident and past resolution,
-   each with a source link, freshness and a match label (Strong, Good or Partial)
+3. The **Outrider** panel in the right-side context section shows a live-generated summary (claims with their
+   matching source text, and any rejected claims behind "see why"), then the related active incident and past
+   resolution, each with a source link, freshness and a match label (Strong, Good or Partial)
 
 Context is built when a ticket is created or updated, not when the panel opens. A ticket that has not changed
 since Outrider was installed shows "Context is being prepared": edit any field (for example Urgency), wait a
@@ -66,7 +67,7 @@ minute or two for the Jira event, then press **Refresh** at the top of the panel
 3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context (development)** → **Add**
 4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6265`
 5. The agent answers with the related active incident (ITO-9647), the past resolution (ITO-9642) and the
-   source-matched summary claims; the deliberately unsupported demo claim comes back as unsupported
+   source-matched summary claims; any claim whose wording could not be matched comes back separately as unsupported
 
 The tool returns the same context as the panel, filtered for whoever is asking: incidents and resolutions with
 source links and freshness (`builtAt`), plus the verified summary (see [Evidence-gated summary](#evidence-gated-summary)).
@@ -96,7 +97,13 @@ forge install -p Jira -s <your-site>.atlassian.net -e production
 forge install -p Confluence -s <your-site>.atlassian.net -e production
 ```
 
-After adding new scopes, upgrade each product's install separately:
+Set the Amazon Bedrock API key once per environment, before deploying (encrypted; never commit it):
+
+```
+forge variables set --encrypt -e production MANTLE_API_KEY
+```
+
+After adding new scopes or egress, upgrade each product's install separately:
 
 ```
 forge install --upgrade -p Jira -s <your-site>.atlassian.net -e production
@@ -124,16 +131,44 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 - A claim is shown only if it shares a verbatim span with its cited source: at least 12 characters and two
   distinctive words, so stock phrases like "the user cannot" never count. Matching ignores case, spacing,
   Markdown and typographic quotes. This proves a text match, not that the claim is true.
-- A claim with no matching span is rejected and counted, with the reason "no matching source span".
+- The matching text must also cover at least half of the claim's distinctive words, so a long claim cannot pass on
+  one short shared phrase. Matching is on words, not meaning: a true claim the model reworded too far is rejected too.
+- A claim that fails either check is rejected and counted, with the reason "no matching source span".
 - In the panel, each shown claim lists its source and the matching text ("From the source"). Rejected claims sit
-  behind "see why", struck through, marked "Removed: the cited source doesn't contain this".
+  behind "see why", struck through, marked "Removed: couldn't match this to the source's wording".
 - A claim with no citation, or citing a source the viewer cannot see, is left out entirely: not shown, not
   counted, so nothing reveals it existed. If no claim survives, there is no summary at all.
-- Through MCP, rejected claims are returned as `unsupportedClaims`, each with a note telling the agent the claim is
-  not supported by any source.
-- **Demo:** until LLM generation is added (step 8c), ITS-6265 carries a canned summary marked as a demo fixture, with
-  one deliberately unsupported claim. The fixture fixes the claims, not the outcome: the verifier runs live on
-  every read.
+- Through MCP, rejected claims are returned as `unsupportedClaims`, each with a note telling the agent the claim's
+  wording could not be matched to its source, so it must not be presented as a fact.
+
+### How the summary is generated
+
+- Every summary is generated live; nothing is canned, the demo ticket included. During each build, the ticket and
+  its incident and resolution excerpts go to **Qwen3-235B on Amazon Bedrock** (via the Mantle endpoint), with
+  DeepSeek v3.2 as a fallback if the first model is unavailable.
+- Sources are sent under neutral labels (S1, S2, …). The model must cite a label for each claim; Outrider maps it
+  back to the ticket. A claim citing an unknown label is never shown.
+- The model is asked for short claims, one fact from one source each, in the source's own wording, with no advice.
+  It is never asked for an unsupported claim. When it rewords or goes beyond a source, the verifier removes the
+  claim, so a rejection appears in some builds and not in others.
+- If nothing relevant changed since the last build, the stored claims are reused and no model call is made.
+- If generation fails or the model is unreachable, the panel shows the incident and resolution sections without a
+  summary.
+- Verified on the demo site: Qwen3-235B answered in about 2 seconds from Forge (about 660 input and 180 output
+  tokens). For ITS-6265 it gave 6 claims: 5 shown, and 1 rejected (a reworded statement of the SSL fix).
+
+## Data sent outside Atlassian
+
+Outrider calls one external service: **Amazon Bedrock (AWS us-east-1)** at `bedrock-mantle.us-east-1.api.aws`,
+to generate summaries. The install screen lists this domain.
+
+- **Sent:** the ticket's summary and description, and the stored excerpts and titles of its related incidents and
+  past resolutions, with emails and links replaced by placeholders.
+- **Not sent:** account IDs, user fields such as reporter or assignee, ticket keys, or links to Jira. Text inside
+  a ticket is sent as written apart from emails and links, so a name typed into a description is included.
+- **When:** only during a context build, when the content above changed. Never when the panel opens or MCP is called.
+- **Credential:** an Amazon Bedrock API key stored as an encrypted Forge environment variable. It is never in
+  code, logs or responses, and judges do not need to provide one.
 
 ## How context is chosen
 
@@ -176,7 +211,10 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 - Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
 - Integration suites in `tests/integration/` run the real pipeline, storage and panel code with Jira and KVS
   simulated: concurrent builds for one ticket, revoked access after a build, read authorization across viewers,
-  MCP caller authorization, and verifier rejection (the canned demo summary checked against real demo-site text).
+  MCP caller authorization, and verifier rejection (a recorded Qwen3-235B response for ITS-6265,
+  `tests/fixtures/mantle-its-6265.json`, checked against real demo-site text).
+- The Bedrock adapter is tested with `fetch` mocked: request shape, fallback, timeouts and errors. CI never calls
+  the model.
 - Builds for the same ticket are serialized with a per-ticket lock (atomic create-if-absent in Forge KVS, with
   lease expiry) plus write guards. This is best-effort, not strict mutual exclusion; the concurrency tests show
   the newer context wins in the tested interleavings.
@@ -201,14 +239,14 @@ per site is planned before submission.
 ## Architecture
 
 ```
-Jira event → Queue → Consumer → ContextBundle (KVS) → JSM Panel
-                                                    → Rovo MCP tools
+Jira event → Queue → Consumer → (Amazon Bedrock: summary claims) → ContextBundle (KVS) → JSM Panel
+                                                                                       → Rovo MCP tools
 ```
 
 | Folder | Contents |
 |---|---|
-| `src/domain` | Pure types, text matching, ranking and fingerprint logic, no Forge imports |
-| `src/adapters` | Jira REST calls and KVS storage |
+| `src/domain` | Pure types, text matching, verification, prompt building, ranking and fingerprint logic, no Forge imports |
+| `src/adapters` | Jira REST calls, the Amazon Bedrock (Mantle) call, and KVS storage |
 | `src/pipeline` | Event handler, queue consumer, job routing, bundle builder |
 | `src/resolvers` | Panel resolver and MCP action handlers |
 | `src/frontend` | UI Kit panel |

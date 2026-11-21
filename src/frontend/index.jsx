@@ -68,7 +68,9 @@ const ResolutionItem = ({ resolution }) => (
 // The resolver sends only claims already verified for this viewer: each kept claim shares a verbatim
 // span with its cited source. Wording follows spec §1.4 and §13.4: "claims with matching source spans",
 // never "verified". The rejected list only ever contains no-matching-span rejections.
-const REJECTION_REASON_LABEL = { 'no-matching-span': "the cited source doesn't contain this" };
+// Accurate for both cases the verifier rejects: a claim the source does not support, and a true claim the
+// model reworded too far from the source's wording (spec §13.2 step 6a).
+const REJECTION_REASON_LABEL = { 'no-matching-span': "couldn't match this to the source's wording" };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 const ClaimItem = ({ claim }) => {
@@ -110,10 +112,7 @@ const Summary = ({ summary }) => {
   const rejected = summary.rejected ?? [];
   return (
     <Stack space="space.100">
-      <Inline space="space.100" alignBlock="center">
-        <Heading size="small">Summary</Heading>
-        {summary.origin === 'demo-fixture' ? <Lozenge appearance="new">Demo fixture</Lozenge> : null}
-      </Inline>
+      <Heading size="small">Summary</Heading>
       <Text size="small" color="color.text.subtlest">
         {plural(summary.claims.length, 'claim with a matching source span', 'claims with matching source spans')}
       </Text>

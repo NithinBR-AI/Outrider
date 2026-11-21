@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   searchResolutions: vi.fn(),
   enqueueTicketBuild: vi.fn(),
   requeueTicketJob: vi.fn(),
+  generateClaims: vi.fn(),
 }));
 
 // In-memory KVS: FAIL_IF_EXISTS rejects when the key exists; expired keys are not removed.
@@ -28,6 +29,8 @@ vi.mock('../../adapters/jira', () => ({
   searchResolutions: h.searchResolutions,
 }));
 vi.mock('../enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild, requeueTicketJob: h.requeueTicketJob }));
+// No network: the model call is mocked; the adapter has its own tests (adapters/__tests__/mantle.test.ts).
+vi.mock('../../adapters/mantle', () => ({ generateClaims: h.generateClaims }));
 
 import { buildTicketBundle } from '../buildTicket';
 import { ticketFingerprint } from '../../domain/extract';
@@ -49,8 +52,14 @@ beforeEach(() => {
   h.searchResolutions.mockReset().mockResolvedValue([resolution('ITO-2')]);
   h.enqueueTicketBuild.mockReset().mockResolvedValue({ buildId: 'build-next', requestedAt: 'r2' });
   h.requeueTicketJob.mockReset().mockResolvedValue(undefined);
+  h.generateClaims.mockReset().mockResolvedValue({
+    claims: [{ claimId: 'llm-1-abc', text: 'The auth service is returning 503 errors.', citedSourceRef: ref('ITO-1') }],
+    model: 'qwen.qwen3-235b-a22b-2507',
+    usage: { prompt_tokens: 700, completion_tokens: 120 },
+  });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 describe('buildTicketBundle', () => {
@@ -247,20 +256,104 @@ describe('per-ticket lock and write guards (spec §8.5, §8.6)', () => {
   });
 });
 
-describe('canned demo summary (spec §13.6)', () => {
-  it('is stored, unverified, on the demo ticket bundle only', async () => {
+describe('live summary generation (spec §12.6, §13.6)', () => {
+  const generated = [{ claimId: 'llm-1-abc', text: 'The auth service is returning 503 errors.', citedSourceRef: ref('ITO-1') }];
+
+  it('stores the generated claims, unverified, with origin llm and the prompt hash', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.generateClaims).toHaveBeenCalledTimes(1);
+    const prompt = h.generateClaims.mock.calls[0][0];
+    expect(Object.values(prompt.labels).map((r: any) => r.id)).toEqual(['ITO-1', 'ITO-2']);
+    expect(bundle()!.summary).toEqual({ origin: 'llm', promptHash: expect.stringMatching(/^[0-9a-f]{32}$/), generatedClaims: generated });
+    expect(status().status).toBe('complete');
+  });
+
+  it('applies to every ticket, the demo ticket included: nothing is canned', async () => {
     h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'build-a', requestedAt: 'r', status: 'queued', actor: { source: 'jira-event' } });
     h.getTicket.mockResolvedValue({ ...ticket, key: 'ITS-6265' });
     await buildTicketBundle({ ...job(), ticketKey: 'ITS-6265' });
-    const demo = h.store.get('bundle:ITS-6265') as ContextBundle;
-    expect(demo.summary?.origin).toBe('demo-fixture');
-    expect(demo.summary?.generatedClaims.length).toBeGreaterThan(0);
+    expect((h.store.get('bundle:ITS-6265') as ContextBundle).summary?.origin).toBe('llm');
   });
 
-  it('is not attached to any other ticket', async () => {
+  it('reuses the previous claims without a call when the prompt is unchanged', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    setStatus({ buildId: 'build-b' });
+    h.generateClaims.mockClear();
+    await buildTicketBundle(job('build-b'));
+    expect(h.generateClaims).not.toHaveBeenCalled();
+    expect(bundle()!.summary!.generatedClaims).toEqual(generated);
+    expect(bundle()!.buildId).toBe('build-b');
+  });
+
+  it('calls the model again when a source changes', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    h.searchIncidents.mockResolvedValue([{ ...incident('ITO-1'), summary: 'new excerpt' }]);
+    setStatus({ buildId: 'build-b' });
+    await buildTicketBundle(job('build-b'));
+    expect(h.generateClaims).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reuse a stored summary that was not generated live (for example the removed step 8a demo summary)', async () => {
+    h.store.set('bundle:ITS-1', { ticketKey: 'ITS-1', summary: { origin: 'demo-fixture', generatedClaims: [] } });
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.generateClaims).toHaveBeenCalledTimes(1);
+    expect(bundle()!.summary!.origin).toBe('llm');
+  });
+
+  it('makes no call and stores no summary when there are no sources', async () => {
+    h.searchIncidents.mockResolvedValue([]);
+    h.searchResolutions.mockResolvedValue([]);
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.generateClaims).not.toHaveBeenCalled();
+    expect(bundle()!.summary).toBeUndefined();
+  });
+
+  it('stores no summary when the model returns no claims', async () => {
+    h.generateClaims.mockResolvedValue({ claims: [], model: 'm' });
     setStatus({});
     await buildTicketBundle(job());
     expect(bundle()!.summary).toBeUndefined();
+  });
+
+  it('on a generation failure stores the sources without a summary, not partial, and completes', async () => {
+    h.generateClaims.mockRejectedValue(new Error('generation-http-503'));
+    setStatus({});
+    await buildTicketBundle(job());
+    const b = bundle()!;
+    expect(b.summary).toBeUndefined();
+    expect(b.incidents).toHaveLength(1);
+    expect(b.partial).toBe(false);
+    expect(b.failures).toEqual([]);
+    expect(status().status).toBe('complete');
+  });
+
+  it('still generates when the previous bundle cannot be read', async () => {
+    setStatus({});
+    const get = h.store.get.bind(h.store);
+    const spy = vi.spyOn(h.store, 'get').mockImplementation((key: string) => {
+      if (key === 'bundle:ITS-1') throw new Error('kvs down');
+      return get(key);
+    });
+    try {
+      await buildTicketBundle(job());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(h.generateClaims).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a summary generated while the ticket changed (stale check runs after generation)', async () => {
+    setStatus({});
+    h.getTicket.mockResolvedValueOnce(ticket).mockResolvedValueOnce({ ...ticket, summary: 'Changed during generation' });
+    await buildTicketBundle(job());
+    expect(h.generateClaims).toHaveBeenCalledTimes(1);
+    expect(bundle()).toBeUndefined();
+    expect(status().status).toBe('superseded');
   });
 });
 

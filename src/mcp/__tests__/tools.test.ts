@@ -123,13 +123,13 @@ describe('bundle exists', () => {
 
   it('annotates the verified summary for agents and renames rejected to unsupportedClaims', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITO-1', 'ITS-2'));
-    const viewer = { ...bundle, summary: { claims: [{ text: 'c', source: ref('ITO-1'), span: 's', grounded: true }], rejected: [{ text: 'made up', reason: 'no-matching-span' as const }], origin: 'demo-fixture' as const } };
+    const viewer = { ...bundle, summary: { claims: [{ text: 'c', source: ref('ITO-1'), span: 's', grounded: true }], rejected: [{ text: 'made up', reason: 'no-matching-span' as const }], origin: 'llm' as const } };
     const out = toMcpBundle(viewer);
     expect(out.summary).toEqual({
       claimsNote: CLAIMS_NOTE,
       claims: viewer.summary.claims,
       unsupportedClaims: [{ text: 'made up', reason: 'no-matching-span', note: UNSUPPORTED_CLAIM_NOTE }],
-      origin: 'demo-fixture',
+      origin: 'llm',
     });
     expect(out).not.toHaveProperty('buildId');
   });

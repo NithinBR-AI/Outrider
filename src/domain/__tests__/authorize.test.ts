@@ -129,7 +129,7 @@ describe('citedJiraKeys', () => {
 
 describe('withVerifiedSummary', () => {
   const viewer = () => filterBundleForViewer(stored({ incidents: [], resolutions: [] }), new Set(['ITS-1']));
-  const summary = (origin?: 'demo-fixture' | 'llm') => ({
+  const summary = (origin?: 'llm') => ({
     origin,
     generatedClaims: [
       { claimId: '1', text: 'We renewed certificate via Let\'s Encrypt', citedSourceRef: ref('ITO-1') },
@@ -139,10 +139,10 @@ describe('withVerifiedSummary', () => {
   const live = new Map([['jira-issue:ITO-1', { ref: ref('ITO-1'), text: 'Root cause: we renewed certificate via Let\'s Encrypt.' }]]);
 
   it('attaches the verified claims and rejections, with the origin', () => {
-    const out = withVerifiedSummary(viewer(), summary('demo-fixture'), live);
+    const out = withVerifiedSummary(viewer(), summary('llm'), live);
     expect(out.summary!.claims.map((c) => c.text)).toEqual(['We renewed certificate via Let\'s Encrypt']);
     expect(out.summary!.rejected).toEqual([{ text: 'A made up claim about payments', reason: 'no-matching-span' }]);
-    expect(out.summary!.origin).toBe('demo-fixture');
+    expect(out.summary!.origin).toBe('llm');
     expect(out.partial).toBe(false);
   });
 

@@ -1,0 +1,6 @@
+{
+  "_about": "Recorded Qwen3-235B (qwen.qwen3-235b-a22b-2507) tool-call arguments for ITS-6265, from the app's final prompt run locally through src/domain/generate.ts on 2026-11-21 (outrider-tools/final-prompt-check.mjs, run 1). Same outcome as the live development build that day: 5 claims kept, 1 rejected (a reworded statement of the fix). Labels as the prompt assigned them. Test fixture only; never shipped in the app (spec 13.6, 19.6).",
+  "model": "qwen.qwen3-235b-a22b-2507",
+  "labels": { "S1": "ITO-9647", "S2": "ITO-9642" },
+  "arguments": "{\"claims\":[{\"text\":\"Login service is experiencing intermittent failures with 503 errors affecting 30% of attempts.\",\"source\":\"S1\"},{\"text\":\"Users report inability to log in and see a generic error message on the login page.\",\"source\":\"S1\"},{\"text\":\"Auth team is investigating the login service issue reported at 09:00 UTC.\",\"source\":\"S1\"},{\"text\":\"SSL certificate on auth-lb-01 expired at 02:00 UTC causing login service failure.\",\"source\":\"S2\"},{\"text\":\"Certificate was renewed via Let's Encrypt and nginx reloaded to resolve the issue.\",\"source\":\"S2\"},{\"text\":\"Login success rate returned to 99.9% within 5 minutes of the fix.\",\"source\":\"S2\"}]}"
+}
