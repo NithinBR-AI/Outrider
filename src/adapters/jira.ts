@@ -157,6 +157,33 @@ export async function visibleIssueKeys(keys: string[]): Promise<Set<string>> {
   return visible;
 }
 
+/**
+ * Current text of cited Jira issues, as the viewer can see it now (spec §13.2 step 3: verify against live
+ * text, never a cached copy). One JQL search per batch, AS THE VIEWER. The text is the summary, the
+ * description and every comment the viewer may read. Issues not returned (no access, deleted, invalid
+ * key) are simply absent, so a claim citing them is omitted. Throws on failure; callers fail closed.
+ */
+export async function liveSourceTexts(keys: string[]): Promise<Map<string, { ref: SourceRef; text: string }>> {
+  const valid = [...new Set(keys)].filter((k) => ISSUE_KEY.test(k));
+  const result = new Map<string, { ref: SourceRef; text: string }>();
+  for (let i = 0; i < valid.length; i += VISIBILITY_BATCH) {
+    const batch = valid.slice(i, i + VISIBILITY_BATCH);
+    const res = await api.asUser().requestJira(route`/rest/api/3/search/jql`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jql: `key in (${batch.join(', ')})`, fields: ['summary', 'description', 'comment', 'updated'], maxResults: batch.length }),
+    });
+    if (!res.ok) throw new Error(`jira-live-text-${res.status}`);
+    const data = (await res.json()) as { issues?: (JiraIssue & { fields: { comment?: { comments?: JiraComment[] } } })[] };
+    for (const issue of data.issues ?? []) {
+      const comments = (issue.fields.comment?.comments ?? []).map((c) => adfToText(c.body));
+      const text = [issue.fields.summary ?? '', adfToText(issue.fields.description), ...comments].filter((t) => t).join('\n');
+      result.set(`jira-issue:${issue.key}`, { ref: toSourceRef(issue), text });
+    }
+  }
+  return result;
+}
+
 // ---- Public API ----
 
 /** Fetches the current state of a ticket (spec §8.1). */

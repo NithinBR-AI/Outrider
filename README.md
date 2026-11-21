@@ -28,7 +28,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 6c-1 | Per-ticket lock, write guards, concurrency test | ✅ (development) |
 | 6c-2 | Read-time authorization in the panel, verified with two users on the demo site | ✅ (development) |
 | 6c-3 | MCP caller identity and authorization gate for `get-ticket-context`, verified with two users via Rovo | ✅ (development) |
-| 7–14 | Verifier, AI summary, remaining MCP tools, Confluence, TWG, demo | 🔜 |
+| 7 | Source-span verifier (tested against real demo-site text; used by the summary in step 8) | ✅ |
+| 8–14 | AI summary with rejected-claim counter, remaining MCP tools, Confluence, TWG, demo | 🔜 |
 
 ## Install
 

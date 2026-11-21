@@ -33,7 +33,7 @@ vi.mock('@forge/api', () => {
   };
 });
 
-import { getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
+import { getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
 
 const comments = fixture.comments as Record<string, unknown>;
 
@@ -284,5 +284,59 @@ describe('visibleIssueKeys (read-time authorization, spec §16)', () => {
   it('throws a short code when the check fails, so callers can fail closed', async () => {
     mock.handler = () => ({ status: 503, json: {} });
     await expect(visibleIssueKeys(['ITS-1'])).rejects.toThrow('jira-visibility-503');
+  });
+});
+
+describe('liveSourceTexts (verifier input, spec §13.2 step 3)', () => {
+  const adf = (text: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
+  const issue = (key: string, summary: string, description: string, comments: string[]) => ({
+    id: key,
+    key,
+    self: `https://one-atlas-edlg.atlassian.net/rest/api/3/issue/${key}`,
+    fields: { summary, description: adf(description), updated: '2026-11-21T04:00:00.000+0000', comment: { comments: comments.map((c) => ({ body: adf(c) })) } },
+  });
+
+  it('runs as the viewer and asks for summary, description and comments in one search', async () => {
+    mock.handler = () => ({ status: 200, json: { issues: [] } });
+    await liveSourceTexts(['ITO-9642', 'ITS-6258']);
+    expect(mock.calls).toHaveLength(1);
+    expect(mock.calls[0].as).toBe('user');
+    expect(mock.calls[0].body).toMatchObject({ jql: 'key in (ITO-9642, ITS-6258)', fields: ['summary', 'description', 'comment', 'updated'], maxResults: 2 });
+  });
+
+  it('joins summary, description and every returned comment into the live text', async () => {
+    mock.handler = () => ({ status: 200, json: { issues: [issue('ITO-9642', 'SSL failure', 'Users saw 503 errors.', ['Root cause: expired certificate.', 'Renewed via Let\'s Encrypt.'])] } });
+    const live = await liveSourceTexts(['ITO-9642']);
+    expect(live.get('jira-issue:ITO-9642')!.text).toBe("SSL failure\nUsers saw 503 errors.\nRoot cause: expired certificate.\nRenewed via Let's Encrypt.");
+  });
+
+  it('returns a current source reference for links', async () => {
+    mock.handler = () => ({ status: 200, json: { issues: [issue('ITO-9642', 'SSL failure', '', [])] } });
+    const ref = (await liveSourceTexts(['ITO-9642'])).get('jira-issue:ITO-9642')!.ref;
+    expect(ref).toEqual({ kind: 'jira-issue', id: 'ITO-9642', url: 'https://one-atlas-edlg.atlassian.net/browse/ITO-9642', title: 'SSL failure', updatedAt: '2026-11-21T04:00:00.000+0000' });
+  });
+
+  it('leaves out issues Jira does not return to the viewer', async () => {
+    mock.handler = () => ({ status: 200, json: { issues: [issue('ITS-6258', 'VPN', 'x', [])] } });
+    const live = await liveSourceTexts(['ITO-9642', 'ITS-6258']);
+    expect([...live.keys()]).toEqual(['jira-issue:ITS-6258']);
+  });
+
+  it('never sends values that are not issue keys', async () => {
+    mock.handler = () => ({ status: 200, json: { issues: [] } });
+    await liveSourceTexts(['ITS-1', 'ITS-2) OR project = ITO', '']);
+    expect(mock.calls[0].body!.jql).toBe('key in (ITS-1)');
+  });
+
+  it('makes no call when nothing is cited, and throws a short code on failure', async () => {
+    expect((await liveSourceTexts([])).size).toBe(0);
+    expect(mock.calls).toHaveLength(0);
+    mock.handler = () => ({ status: 500, json: {} });
+    await expect(liveSourceTexts(['ITS-1'])).rejects.toThrow('jira-live-text-500');
+  });
+
+  it('tolerates issues without description or comments', async () => {
+    mock.handler = () => ({ status: 200, json: { issues: [{ id: '1', key: 'ITS-1', self: 'https://x.atlassian.net/rest/api/3/issue/1', fields: { summary: 'Only a title' } }] } });
+    expect((await liveSourceTexts(['ITS-1'])).get('jira-issue:ITS-1')!.text).toBe('Only a title');
   });
 });
