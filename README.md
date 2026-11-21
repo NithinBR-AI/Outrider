@@ -269,16 +269,21 @@ once per site.
 
 ### 1. Open the settings page
 
-You must be a **Jira admin** on the site. The page is part of Jira's own settings, not Atlassian Administration
-(`admin.atlassian.com`, which lists products and plans, does not have it). Any of these opens it:
+You must be a **Jira admin** on the site. The page itself opens in Jira's settings. Atlassian Administration's
+**Atlassian apps** page (products and plans) does not lead to it, but its **Connected apps** list does (below).
+Any of these opens it:
 
 - **From the Outrider panel:** on any ticket, while Outrider is not set up, the panel says "Outrider isn't set up
   for this project yet" with a link, **Open Outrider settings**.
-- **From the app list in Atlassian Administration:** app management has moved out of Jira, so open
-  [admin.atlassian.com](https://admin.atlassian.com) → your site → **Site settings** → **Connected apps**. (From
-  Jira, **Settings** (cog) → **Marketplace apps** shows "App management has moved to Administration" with a
-  **Take me there** button that opens the same list.) Find **Outrider**; it can have one row per product it is
-  installed in. On the **Jira** row, open the **⋯** menu and choose **Configure**.
+- **From Jira's app list:**
+  1. In Jira, click the **cog icon (Settings)** at the top right.
+  2. Under **Jira admin settings**, click **Marketplace apps**.
+  3. The page says "App management has moved to Administration". Click **Take me there**.
+  4. You are now on **Connected apps** in Atlassian Administration. In the **Installed apps** list, find
+     **outrider**. It appears as a group with one row per product it is installed in.
+  5. On an **outrider** row, click **⋯** at the right end and choose **Configure**. (On the demo site only one
+     of the rows has a **⋯** menu; that is the one.)
+  6. The Outrider settings page opens in Jira.
 - **Direct link**, replacing `<your-site>` with your site name:
 
   ```
