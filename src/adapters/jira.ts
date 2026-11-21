@@ -7,14 +7,14 @@ import api, { route } from '@forge/api';
 import { Incident, Resolution, SourceRef, Ticket } from '../domain/types';
 import { adfToText, excerpt, extractKeywords, keywordOverlap, mapIncidentStatus, pickResolutionComment, TicketKeywords } from '../domain/extract';
 import { incidentComponents, rank, resolutionComponents } from '../domain/score';
+import { PROJECT_KEY, RetrievalSettings } from '../domain/settings';
 
-// ---- Configuration (verified against the demo site, see outrider-seed/README.md) ----
+// ---- Configuration ----
+// Which projects are searched and which custom fields hold Affected services and Request type are site
+// settings (domain/settings.ts, set on the admin page), passed in by the caller. The incident issue type
+// "[System] Incident" stays fixed on purpose: it is the JSM IT service management type, and on a site
+// without it Jira returns no results (verified: unknown values in JQL give HTTP 200 with no issues).
 
-// Projects searched for incidents and past resolutions. Incidents mostly live in ITO.
-export const SOURCE_PROJECTS = ['ITS', 'ITO'];
-// Custom field IDs on this site.
-const FIELD_REQUEST_TYPE = 'customfield_10010';
-const FIELD_AFFECTED_SERVICES = 'customfield_10039';
 // How far back to look. Resolved incidents older than this are not "recent".
 const RECENT_INCIDENT_DAYS = 30;
 const RESOLUTION_LOOKBACK_DAYS = 365;
@@ -132,8 +132,9 @@ function toSourceRef(issue: JiraIssue, siteBase: string): SourceRef {
   };
 }
 
-function serviceIdsOf(issue: JiraIssue): string[] {
-  const raw = issue.fields[FIELD_AFFECTED_SERVICES];
+function serviceIdsOf(issue: JiraIssue, field: string | undefined): string[] {
+  if (!field) return [];
+  const raw = issue.fields[field];
   if (!Array.isArray(raw)) return [];
   return raw
     .map((s) => (s && typeof s === 'object' && typeof (s as { id?: unknown }).id === 'string' ? (s as { id: string }).id : ''))
@@ -150,16 +151,20 @@ function candidateText(issue: JiraIssue): string {
  * often covers unrelated problems (on the demo site, database and VPN incidents share
  * "Infrastructure Services").
  */
-function match(keywords: TicketKeywords, text: string, ticket: Ticket, issue: JiraIssue): { overlap: number; sharedService: boolean } {
+function match(keywords: TicketKeywords, text: string, ticket: Ticket, issue: JiraIssue, servicesField: string | undefined): { overlap: number; sharedService: boolean } {
   return {
     overlap: keywordOverlap(keywords, text),
-    sharedService: serviceIdsOf(issue).some((id) => ticket.serviceIds.includes(id)),
+    sharedService: serviceIdsOf(issue, servicesField).some((id) => ticket.serviceIds.includes(id)),
   };
 }
 
 const sourceKey = (issue: JiraIssue) => `jira-issue:${issue.key}`;
 
-const CANDIDATE_FIELDS = ['summary', 'description', 'status', 'created', 'updated', 'resolutiondate', 'reporter', 'issuetype', FIELD_AFFECTED_SERVICES];
+const candidateFields = (settings: RetrievalSettings) =>
+  ['summary', 'description', 'status', 'created', 'updated', 'resolutiondate', 'reporter', 'issuetype', settings.affectedServicesField].filter((f): f is string => !!f);
+
+// Project keys are checked on save (domain/settings.ts); this re-check keeps anything else out of JQL.
+const projectList = (settings: RetrievalSettings) => settings.sourceProjects.filter((k) => PROJECT_KEY.test(k)).join(', ');
 
 // ---- Read-time authorization (spec §16) ----
 
@@ -223,10 +228,12 @@ export async function liveSourceTexts(keys: string[]): Promise<Map<string, { ref
 // ---- Public API ----
 
 /** Fetches the current state of a ticket (spec §8.1). */
-export async function getTicket(ticketKey: string): Promise<Ticket> {
-  const fields = ['summary', 'description', 'reporter', 'project', 'priority', 'labels', 'status', 'updated', FIELD_REQUEST_TYPE, FIELD_AFFECTED_SERVICES].join(',');
+export async function getTicket(ticketKey: string, settings: RetrievalSettings): Promise<Ticket> {
+  const fields = ['summary', 'description', 'reporter', 'project', 'priority', 'labels', 'status', 'updated', settings.requestTypeField, settings.affectedServicesField]
+    .filter((f): f is string => !!f)
+    .join(',');
   const issue = await jiraGet<JiraIssue>(route`/rest/api/3/issue/${ticketKey}?fields=${fields}`);
-  const requestType = issue.fields[FIELD_REQUEST_TYPE] as { requestType?: { id?: string } } | null | undefined;
+  const requestType = (settings.requestTypeField ? issue.fields[settings.requestTypeField] : undefined) as { requestType?: { id?: string } } | null | undefined;
   return {
     key: issue.key,
     projectKey: issue.fields.project?.key ?? issue.key.split('-')[0],
@@ -236,25 +243,26 @@ export async function getTicket(ticketKey: string): Promise<Ticket> {
     requestTypeId: requestType?.requestType?.id,
     priority: issue.fields.priority?.name,
     labels: issue.fields.labels ?? [],
-    serviceIds: serviceIdsOf(issue),
+    serviceIds: serviceIdsOf(issue, settings.affectedServicesField),
     status: issue.fields.status?.name ?? '',
     updatedAt: issue.fields.updated ?? '',
   };
 }
 
 /** Active incidents and recently resolved incidents related to the ticket, ranked per spec §9. */
-export async function searchIncidents(ticket: Ticket, now: Date = new Date()): Promise<Incident[]> {
-  const projects = SOURCE_PROJECTS.join(', ');
+export async function searchIncidents(ticket: Ticket, settings: RetrievalSettings, now: Date = new Date()): Promise<Incident[]> {
+  const projects = projectList(settings);
+  if (!projects) return [];
   const jql =
     `project in (${projects}) AND issuetype = "[System] Incident"${notSelf(ticket)} ` +
     `AND (statusCategory != Done OR resolved >= -${RECENT_INCIDENT_DAYS}d) ORDER BY created DESC`;
-  const issues = await searchJql(jql, CANDIDATE_FIELDS, INCIDENT_CANDIDATES);
+  const issues = await searchJql(jql, candidateFields(settings), INCIDENT_CANDIDATES);
   const keywords = extractKeywords(ticket.summary, ticket.description);
 
   const qualified: { issue: JiraIssue; status: Incident['status']; overlap: number; sharedService: boolean }[] = [];
   for (const issue of issues) {
     const status = mapIncidentStatus(issue.fields.status?.name ?? '', issue.fields.status?.statusCategory?.key ?? '');
-    const m = match(keywords, candidateText(issue), ticket, issue);
+    const m = match(keywords, candidateText(issue), ticket, issue, settings.affectedServicesField);
     if (status !== null && m.overlap >= MIN_SYMPTOM_OVERLAP) qualified.push({ issue, status, ...m });
   }
 
@@ -278,17 +286,18 @@ export async function searchIncidents(ticket: Ticket, now: Date = new Date()): P
 }
 
 /** Previously resolved tickets with similar symptoms or the same requester, ranked per spec §9. */
-export async function searchResolutions(ticket: Ticket, now: Date = new Date()): Promise<Resolution[]> {
-  const projects = SOURCE_PROJECTS.join(', ');
+export async function searchResolutions(ticket: Ticket, settings: RetrievalSettings, now: Date = new Date()): Promise<Resolution[]> {
+  const projects = projectList(settings);
+  if (!projects) return [];
   const base =
     `project in (${projects}) AND statusCategory = Done AND status != Cancelled ` +
     `AND resolved >= -${RESOLUTION_LOOKBACK_DAYS}d${notSelf(ticket)}`;
   const requesterId = ticket.requester?.accountId;
 
   const [bySymptom, byRequester] = await Promise.all([
-    searchJql(`${base} ORDER BY resolved DESC`, CANDIDATE_FIELDS, RESOLUTION_CANDIDATES),
+    searchJql(`${base} ORDER BY resolved DESC`, candidateFields(settings), RESOLUTION_CANDIDATES),
     requesterId
-      ? searchJql(`${base} AND reporter = ${jqlString(requesterId)} ORDER BY resolved DESC`, CANDIDATE_FIELDS, SAME_REQUESTER_CANDIDATES)
+      ? searchJql(`${base} AND reporter = ${jqlString(requesterId)} ORDER BY resolved DESC`, candidateFields(settings), SAME_REQUESTER_CANDIDATES)
       : Promise.resolve([] as JiraIssue[]),
   ]);
 
@@ -302,7 +311,7 @@ export async function searchResolutions(ticket: Ticket, now: Date = new Date()):
   const isSameRequester = (issue: JiraIssue) => !!requesterId && issue.fields.reporter?.accountId === requesterId;
   // This pass only chooses which comments to fetch, so a simple overlap ordering is enough.
   const firstPass = [...merged.values()]
-    .map((issue) => ({ issue, ...match(keywords, candidateText(issue), ticket, issue) }))
+    .map((issue) => ({ issue, ...match(keywords, candidateText(issue), ticket, issue, settings.affectedServicesField) }))
     .filter((c) => c.overlap > 0 || isSameRequester(c.issue))
     .sort((a, b) => b.overlap - a.overlap || Number(b.sharedService) - Number(a.sharedService) || a.issue.key.localeCompare(b.issue.key))
     .slice(0, RESOLUTION_COMMENT_FETCHES);
@@ -312,7 +321,7 @@ export async function searchResolutions(ticket: Ticket, now: Date = new Date()):
     firstPass.map(async ({ issue }) => {
       // One failed comment fetch drops that candidate only, not the whole section.
       const resolutionText = await getResolutionText(issue).catch(() => '');
-      return { issue, resolutionText, ...match(keywords, `${candidateText(issue)} ${resolutionText}`, ticket, issue) };
+      return { issue, resolutionText, ...match(keywords, `${candidateText(issue)} ${resolutionText}`, ticket, issue, settings.affectedServicesField) };
     }),
   );
 

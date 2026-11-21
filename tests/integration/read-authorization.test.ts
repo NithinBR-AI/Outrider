@@ -73,6 +73,7 @@ const shown = (s: PanelState) => ('bundle' in s && s.bundle ? [...s.bundle.incid
 
 beforeEach(() => {
   h.store.clear();
+  h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010', savedAt: 't' }); // explicit site settings (Phase 5.5)
   h.checkCalls = [];
   h.checkFails = false;
   h.canSee = {
@@ -214,5 +215,23 @@ describe('panel states for an authorized viewer', () => {
     const b = await as('userB');
     expect(b.state).toBe('building');
     expect(shown(b)).toEqual(['ITS-6258']);
+  });
+});
+
+describe('site not set up (spec Phase 5.5)', () => {
+  it('a viewer who can see the ticket is told it is not set up, never left on "being prepared"', async () => {
+    h.store.delete('settings:site');
+    storeBundle();
+    expect(await as('userA')).toEqual({ state: 'not-set-up' });
+  });
+
+  it('a ticket in a project that does not get context is also "not set up"', async () => {
+    h.store.set('settings:site', { bundleProjects: ['SUP'], sourceProjects: ['SUP'], savedAt: 't' });
+    expect(await as('userA')).toEqual({ state: 'not-set-up' });
+  });
+
+  it('the ticket gate still comes first: a viewer who cannot see the ticket gets the generic "unavailable"', async () => {
+    h.store.delete('settings:site');
+    expect(await as('userC')).toEqual({ state: 'unavailable' });
   });
 });

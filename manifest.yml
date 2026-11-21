@@ -9,6 +9,17 @@ modules:
       description: Outrider prepares relevant context for this ticket.
       label: Outrider
 
+  # Per-site settings (spec Phase 5.5). Only Jira admins can open it. useAsConfig adds a Configure button to
+  # Outrider's entry in Jira's Manage apps list; the page is at /jira/settings/apps/configure/<appId>/<envId>.
+  jira:adminPage:
+    - key: outrider-settings
+      resource: admin
+      resolver:
+        function: adminResolver
+      render: native
+      title: Outrider
+      useAsConfig: true
+
   rovo:mcp:
     - key: outrider-mcp
       name: Outrider MCP
@@ -77,6 +88,8 @@ modules:
   function:
     - key: panelResolver
       handler: index.panelResolver
+    - key: adminResolver
+      handler: index.adminResolver
 
     - key: getTicketContext
       handler: index.getTicketContext
@@ -95,6 +108,8 @@ modules:
 resources:
   - key: panel
     path: src/frontend/index.jsx
+  - key: admin
+    path: src/frontend/admin.jsx
 
 app:
   runtime:

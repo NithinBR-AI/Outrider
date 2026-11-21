@@ -19,6 +19,8 @@ import { limitCandidates } from '../domain/score';
 import { buildGenerationPrompt, promptHash } from '../domain/generate';
 import * as jira from '../adapters/jira';
 import { generateClaims } from '../adapters/mantle';
+import { getSettings } from '../adapters/settings';
+import { isBundleTicket } from '../domain/settings';
 import { acquireLock, getBundle, getStatus, holdsLock, putBundle, releaseLock, updateStatusIf } from '../adapters/storage';
 import { enqueueTicketBuild, requeueTicketJob } from './enqueue';
 
@@ -104,13 +106,22 @@ async function summarize(ticket: Ticket, incidents: Incident[], resolutions: Res
 async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
   const { ticketKey, buildId } = job;
 
-  const ticket = await jira.getTicket(ticketKey);
+  // Settings are read once per invocation. If the site was unconfigured, or this project removed, after the
+  // job was queued, build nothing.
+  const settings = await getSettings();
+  if (!settings || !isBundleTicket(settings, ticketKey)) {
+    await updateStatusIf(ticketKey, buildId, ['building'], { status: 'failed', error: 'not-configured' });
+    console.log(`build ${buildId} for ${ticketKey} skipped: project not configured`);
+    return;
+  }
+
+  const ticket = await jira.getTicket(ticketKey, settings);
   const fingerprint = ticketFingerprint(ticket);
   const now = new Date();
   const failures: string[] = [];
   const [incidents, resolutions] = await Promise.all([
-    safe(() => jira.searchIncidents(ticket, now), [], failures, 'jira-incidents'),
-    safe(() => jira.searchResolutions(ticket, now), [], failures, 'jira-resolutions'),
+    safe(() => jira.searchIncidents(ticket, settings, now), [], failures, 'jira-incidents'),
+    safe(() => jira.searchResolutions(ticket, settings, now), [], failures, 'jira-resolutions'),
   ]);
 
   // An incident that also appears as a past resolution is shown once, as the resolution.
@@ -122,7 +133,7 @@ async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
   const summary = await summarize(ticket, keptIncidents, keptResolutions);
 
   // Stale-build protection (§8.4): the ticket must be unchanged since retrieval started.
-  const latestTicket = await jira.getTicket(ticketKey);
+  const latestTicket = await jira.getTicket(ticketKey, settings);
   if (ticketFingerprint(latestTicket) !== fingerprint) {
     // Queue a fresh build only if this build still owns the status. If a newer build already owns
     // it (the ticket edit that changed the fingerprint also fired an event), that build covers it.

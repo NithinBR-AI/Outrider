@@ -14,6 +14,8 @@ import { getTicket, searchIncidents, searchResolutions, visibleIssueKeys } from 
 import { getBundle, getStatus } from '../adapters/storage';
 import { AUTH_JIRA_CHECK_FAILED, bundleSourceKeys } from '../domain/authorize';
 import { MAX_TOOL_RESULTS, textQuery, withHint } from '../domain/query';
+import { isBundleTicket, NOT_SET_UP_MESSAGE, RetrievalSettings, SiteSettings } from '../domain/settings';
+import { getSettings } from '../adapters/settings';
 import { Incident, PendingContext, Resolution, Ticket, ViewerBundle } from '../domain/types';
 import { viewerBundle } from '../resolvers/viewerContext';
 import { enqueueTicketBuild } from '../pipeline/enqueue';
@@ -24,6 +26,13 @@ export type TicketNotAccessible = {
   ticketKey: string;
   message: string;
 };
+
+/**
+ * Returned when the site has no settings, or (get-ticket-context) the ticket's project does not get context
+ * (Phase 5.5). Only after the ticket gate passes, so it never tells an unauthorized caller anything.
+ */
+export type NotSetUp = { status: 'not-set-up'; message: string };
+const NOT_SET_UP: NotSetUp = { status: 'not-set-up', message: NOT_SET_UP_MESSAGE };
 
 /**
  * The viewer-filtered bundle as MCP callers receive it. buildId and ticketFingerprint are internal
@@ -53,7 +62,7 @@ export type McpSummary = {
 
 export type McpContextBundle = Omit<ViewerBundle, 'buildId' | 'ticketFingerprint' | 'summary'> & { summary?: McpSummary };
 
-export type GetTicketContextResult = McpContextBundle | PendingContext | TicketNotAccessible;
+export type GetTicketContextResult = McpContextBundle | PendingContext | TicketNotAccessible | NotSetUp;
 
 /** Removes internal bookkeeping fields and annotates the verified summary for agents. */
 export function toMcpBundle(bundle: ViewerBundle): McpContextBundle {
@@ -85,6 +94,9 @@ export async function getTicketContext(ticketKey: string, callerAccountId: strin
     ticketVisible = false; // Could not verify means not authorized (§16.5).
   }
   if (!ticketVisible) return notAccessible;
+
+  // Not set up for this project: say so instead of queueing a build that would do nothing.
+  if (!isBundleTicket(await getSettings(), ticketKey)) return NOT_SET_UP;
 
   // 2. No bundle yet: report the build in flight, or queue one.
   const stored = await getBundle(ticketKey);
@@ -125,19 +137,27 @@ export async function getTicketContext(ticketKey: string, callerAccountId: strin
 // results" from "no access" (TicketNotAccessible) and from "could not check" (partial).
 
 export type FindQuery = { ticketKey?: string; text?: string };
-export type FindIncidentsResult = { incidents: Incident[]; partial: boolean; failures: string[] } | TicketNotAccessible;
-export type FindResolutionsResult = { resolutions: Resolution[]; partial: boolean; failures: string[] } | TicketNotAccessible;
+export type FindIncidentsResult = { incidents: Incident[]; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp;
+export type FindResolutionsResult = { resolutions: Resolution[]; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp;
 
-// Ticket has its own status field (the Jira status), so "'status' in x" cannot tell the two apart.
-const isNotAccessible = (x: object): x is TicketNotAccessible => (x as { status?: unknown }).status === 'not-accessible' && 'message' in x;
+// Ticket has its own status field (the Jira status), so "'status' in x" cannot tell a query ticket from these.
+const isRefusal = (x: object): x is TicketNotAccessible | NotSetUp => {
+  const status = (x as { status?: unknown }).status;
+  return (status === 'not-accessible' || status === 'not-set-up') && 'message' in x;
+};
 
-/** The query ticket for a find-* call, or TicketNotAccessible if a named ticket fails the gate. */
-async function queryFor(query: FindQuery): Promise<Ticket | TicketNotAccessible> {
-  if (!query.ticketKey) return textQuery(query.text ?? '');
+/**
+ * The query ticket for a find-* call. Order: the ticket gate (if a ticket is named), then the settings check,
+ * then the ticket read. The find tools search any ticket the caller can see, so they only need settings
+ * to exist, not the ticket's project to be a bundle project.
+ */
+async function queryFor(query: FindQuery, settings: SiteSettings | undefined): Promise<Ticket | TicketNotAccessible | NotSetUp> {
+  if (!query.ticketKey) return settings ? textQuery(query.text ?? '') : NOT_SET_UP;
   const notAccessible: TicketNotAccessible = { status: 'not-accessible', ticketKey: query.ticketKey, message: NOT_ACCESSIBLE_MESSAGE };
   try {
     if (!(await visibleIssueKeys([query.ticketKey])).has(query.ticketKey)) return notAccessible;
-    return withHint(await getTicket(query.ticketKey), query.text);
+    if (!settings) return NOT_SET_UP;
+    return withHint(await getTicket(query.ticketKey, settings), query.text);
   } catch (err) {
     // Could not verify, or the ticket vanished after the check: not accessible (§16.5).
     console.error(`MCP find: ticket check failed for ${query.ticketKey}`, err);
@@ -148,14 +168,15 @@ async function queryFor(query: FindQuery): Promise<Ticket | TicketNotAccessible>
 /** Retrieves as the app, then keeps what the caller can see, capped. Failures return nothing, marked partial. */
 async function findFor<T extends { source: { id: string } }>(
   query: FindQuery,
-  search: (ticket: Ticket) => Promise<T[]>,
+  search: (ticket: Ticket, settings: RetrievalSettings) => Promise<T[]>,
   sourceFailure: string,
-): Promise<{ items: T[]; partial: boolean; failures: string[] } | TicketNotAccessible> {
-  const ticket = await queryFor(query);
-  if (isNotAccessible(ticket)) return ticket;
+): Promise<{ items: T[]; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp> {
+  const settings = await getSettings();
+  const ticket = await queryFor(query, settings);
+  if (isRefusal(ticket)) return ticket;
   let found: T[];
   try {
-    found = await search(ticket);
+    found = await search(ticket, settings!);
   } catch (err) {
     console.error(`MCP find: ${sourceFailure} failed`, err);
     return { items: [], partial: true, failures: [sourceFailure] };
@@ -171,11 +192,11 @@ async function findFor<T extends { source: { id: string } }>(
 }
 
 export async function findRelatedIncidents(query: FindQuery): Promise<FindIncidentsResult> {
-  const r = await findFor(query, (t) => searchIncidents(t), 'jira-incidents');
-  return isNotAccessible(r) ? r : { incidents: r.items, partial: r.partial, failures: r.failures };
+  const r = await findFor(query, (t, s) => searchIncidents(t, s), 'jira-incidents');
+  return isRefusal(r) ? r : { incidents: r.items, partial: r.partial, failures: r.failures };
 }
 
 export async function findSimilarResolutions(query: FindQuery): Promise<FindResolutionsResult> {
-  const r = await findFor(query, (t) => searchResolutions(t), 'jira-resolutions');
-  return isNotAccessible(r) ? r : { resolutions: r.items, partial: r.partial, failures: r.failures };
+  const r = await findFor(query, (t, s) => searchResolutions(t, s), 'jira-resolutions');
+  return isRefusal(r) ? r : { resolutions: r.items, partial: r.partial, failures: r.failures };
 }

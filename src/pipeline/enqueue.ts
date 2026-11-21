@@ -5,13 +5,14 @@ import { randomUUID } from 'crypto';
 import { Queue } from '@forge/events';
 import { ActorContext, BuildJob } from '../domain/types';
 import { putStatus, updateStatusIf } from '../adapters/storage';
+import { getSettings } from '../adapters/settings';
+import { isBundleTicket } from '../domain/settings';
 
 // Must match consumer.queue in manifest.yml.
 export const BUILD_QUEUE_KEY = 'outrider-build-queue';
 
-// Projects whose tickets get a context bundle. Incidents and resolutions are searched
-// more widely (see SOURCE_PROJECTS in adapters/jira.ts).
-export const BUNDLE_PROJECTS = ['ITS'];
+// Which projects' tickets get a context bundle is a site setting (domain/settings.ts, set on the admin
+// page). With no settings saved, no event queues a build.
 
 const queue = new Queue<BuildJob>({ key: BUILD_QUEUE_KEY });
 
@@ -61,8 +62,7 @@ export async function onJiraIssueEvent(event: JiraIssueEvent): Promise<void> {
     console.warn(`jira event ${event.eventType ?? 'unknown'} without issue key, skipped`);
     return;
   }
-  const projectKey = ticketKey.split('-')[0];
-  if (!BUNDLE_PROJECTS.includes(projectKey)) return;
+  if (!isBundleTicket(await getSettings(), ticketKey)) return;
 
   const actor: ActorContext = { accountId: event.atlassianId, source: 'jira-event' };
   const { buildId } = await enqueueTicketBuild(ticketKey, actor);

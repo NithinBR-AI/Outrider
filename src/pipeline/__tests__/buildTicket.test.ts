@@ -47,6 +47,7 @@ const bundle = () => h.store.get('bundle:ITS-1') as ContextBundle | undefined;
 
 beforeEach(() => {
   h.store.clear();
+  h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010', savedAt: 't' }); // explicit site settings (Phase 5.5)
   h.getTicket.mockReset().mockResolvedValue(ticket);
   h.searchIncidents.mockReset().mockResolvedValue([incident('ITO-1')]);
   h.searchResolutions.mockReset().mockResolvedValue([resolution('ITO-2')]);
@@ -163,8 +164,8 @@ describe('buildTicketBundle', () => {
   it('passes one shared clock to both sources so ranking is consistent', async () => {
     setStatus({});
     await buildTicketBundle(job());
-    const nowIncidents = h.searchIncidents.mock.calls[0][1] as Date;
-    const nowResolutions = h.searchResolutions.mock.calls[0][1] as Date;
+    const nowIncidents = h.searchIncidents.mock.calls[0][2] as Date;
+    const nowResolutions = h.searchResolutions.mock.calls[0][2] as Date;
     expect(nowIncidents).toBeInstanceOf(Date);
     expect(nowResolutions).toBe(nowIncidents);
     expect(bundle()!.builtAt).toBe(nowIncidents.toISOString());
@@ -411,5 +412,29 @@ describe('fingerprint and supersession (spec §8.2, §8.4)', () => {
     await buildTicketBundle(job());
     expect(bundle()).toBeUndefined();
     expect(status().status).toBe('failed');
+  });
+});
+
+describe('site settings (spec Phase 5.5)', () => {
+  it('passes the saved settings to every Jira call', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    const settings = { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' };
+    expect(h.getTicket).toHaveBeenCalledWith('ITS-1', settings);
+    expect(h.searchIncidents.mock.calls[0][1]).toEqual(settings);
+    expect(h.searchResolutions.mock.calls[0][1]).toEqual(settings);
+  });
+
+  it.each([
+    ['the site was unconfigured after the job was queued', undefined],
+    ['the project was removed from the bundle projects', { bundleProjects: ['SUP'], sourceProjects: ['SUP'], savedAt: 't' }],
+  ])('builds nothing when %s', async (_why, settings) => {
+    if (settings) h.store.set('settings:site', settings);
+    else h.store.delete('settings:site');
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.getTicket).not.toHaveBeenCalled();
+    expect(bundle()).toBeUndefined();
+    expect(status()).toMatchObject({ status: 'failed', error: 'not-configured' });
   });
 });

@@ -92,6 +92,7 @@ const panelSummary = async () => {
 
 beforeEach(() => {
   h.store.clear();
+  h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010', savedAt: 't' }); // explicit site settings (Phase 5.5)
   h.store.set('bundle:ITS-6265', stored);
   h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { source: 'jira-event' } });
   // The test viewer: can see the ticket and both cited sources (as user A on the demo site).

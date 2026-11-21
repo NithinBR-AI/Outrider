@@ -2,7 +2,7 @@
 // Renders the latest stored context bundle for this ticket. Read-only: no interaction here
 // changes the bundle or starts a build (spec §17.7).
 import React, { useEffect, useState } from 'react';
-import ForgeReconciler, { Box, Button, Em, Heading, Inline, Link, Lozenge, SectionMessage, Spinner, Stack, Strike, Strong, Text } from '@forge/react';
+import ForgeReconciler, { Box, Button, Em, Heading, Inline, Link, Lozenge, SectionMessage, Spinner, Stack, Strike, Strong, Text, useProductContext } from '@forge/react';
 import { invoke } from '@forge/bridge';
 
 // When no bundle exists yet, check once more after this delay (spec §17.6: one poll, no spinner loop).
@@ -166,10 +166,30 @@ const STATE_MESSAGE = {
   'no-bundle': 'Context is being prepared. Check back shortly.',
   // Generic on purpose: never says whether context exists for this ticket (spec §17.1).
   unavailable: 'Outrider context is not available.',
+  // Must match NOT_SET_UP_MESSAGE in src/domain/settings.ts (spec Phase 5.5).
+  'not-set-up': "Outrider isn't set up for this project yet. Ask a Jira admin to configure it.",
   queued: 'Context assembly is queued.',
   building: 'Context is being assembled.',
   superseded: 'A newer version is being prepared.',
   failed: 'Context could not be assembled.',
+};
+
+// Outrider's own app ID (manifest.yml app.id), not a site setting. With the environment ID from the product
+// context it gives the settings page address (jira:adminPage with useAsConfig, spec Phase 5.5).
+const APP_ID = '91f15c4b-555e-4db0-99e1-7567c801fc07';
+const settingsUrl = (context) =>
+  context?.siteUrl && context?.environmentId ? `${context.siteUrl}/jira/settings/apps/configure/${APP_ID}/${context.environmentId}` : null;
+
+// Shown when the site or this project is not set up. The link helps whoever sees the message; only Jira admins
+// can open the page, so it reveals nothing and grants nothing.
+const NotSetUp = ({ message }) => {
+  const url = settingsUrl(useProductContext());
+  return (
+    <SectionMessage appearance="information">
+      <Text>{message}</Text>
+      {url ? <Text><Link href={url} openNewTab>Open Outrider settings</Link> (Jira admins only)</Text> : null}
+    </SectionMessage>
+  );
 };
 
 const App = () => {
@@ -181,7 +201,7 @@ const App = () => {
     let timer;
     const load = () => invoke('getContext').then((r) => { if (!cancelled) setResult(r); return r; });
     load().then((r) => {
-      if (r && r.state !== 'complete' && r.state !== 'failed' && r.state !== 'unavailable') {
+      if (r && r.state !== 'complete' && r.state !== 'failed' && r.state !== 'unavailable' && r.state !== 'not-set-up') {
         timer = setTimeout(load, POLL_ONCE_AFTER_MS);
       }
     });
@@ -196,6 +216,7 @@ const App = () => {
   if (!result) return <Spinner label="Loading Outrider context" />;
 
   const message = STATE_MESSAGE[result.state];
+  if (result.state === 'not-set-up') return <NotSetUp message={message} />;
   if (result.state === 'unavailable') {
     // Nothing else is rendered: no freshness, no build state, no hint that context exists.
     return <SectionMessage appearance="information"><Text>{message}</Text></SectionMessage>;

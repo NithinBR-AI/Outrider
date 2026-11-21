@@ -11,13 +11,18 @@ const h = vi.hoisted(() => ({
   getTicket: vi.fn(),
   searchIncidents: vi.fn(),
   searchResolutions: vi.fn(),
+  getSettings: vi.fn(),
 }));
+// Explicit site settings (Phase 5.5), as on the demo site.
+const SETTINGS = { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' };
 vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys, getTicket: h.getTicket, searchIncidents: h.searchIncidents, searchResolutions: h.searchResolutions }));
+vi.mock('../../adapters/settings', () => ({ getSettings: h.getSettings }));
 vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
 vi.mock('../../pipeline/enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
 
 import { CLAIMS_NOTE, findRelatedIncidents, findSimilarResolutions, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
 import { MAX_TOOL_RESULTS } from '../../domain/query';
+import { NOT_SET_UP_MESSAGE } from '../../domain/settings';
 import { Incident, Resolution, Ticket } from '../../domain/types';
 import { AUTH_JIRA_CHECK_FAILED } from '../../domain/authorize';
 
@@ -42,6 +47,7 @@ beforeEach(() => {
   h.getBundle.mockReset().mockResolvedValue(undefined);
   h.getStatus.mockReset().mockResolvedValue(undefined);
   h.enqueueTicketBuild.mockReset().mockResolvedValue({ buildId: 'b-new', requestedAt: '2026-11-21T04:05:00.000Z' });
+  h.getSettings.mockReset().mockResolvedValue(SETTINGS);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -199,7 +205,8 @@ describe('find tools', () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITS-5', 'ITS-6'));
     expect(await findRelatedIncidents({ ticketKey: 'ITS-1' })).toEqual({ incidents: [inc('ITS-5')], partial: false, failures: [] });
     expect(await findSimilarResolutions({ ticketKey: 'ITS-1' })).toEqual({ resolutions: [res('ITS-6')], partial: false, failures: [] });
-    expect(h.searchIncidents).toHaveBeenCalledWith(its1);
+    expect(h.searchIncidents).toHaveBeenCalledWith(its1, SETTINGS);
+    expect(h.getTicket).toHaveBeenCalledWith('ITS-1', SETTINGS);
     expect(h.getBundle).not.toHaveBeenCalled(); // never the stored bundle
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
   });
@@ -207,14 +214,14 @@ describe('find tools', () => {
   it('the ticket wins; free text is appended to its description as a hint', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
     await findRelatedIncidents({ ticketKey: 'ITS-1', text: 'after the SSO change' });
-    expect(h.searchIncidents).toHaveBeenCalledWith({ ...its1, description: 'Generic error\nafter the SSO change' });
+    expect(h.searchIncidents).toHaveBeenCalledWith({ ...its1, description: 'Generic error\nafter the SSO change' }, SETTINGS);
   });
 
   it('free text alone searches symptoms only, with no ticket check and no ticket read', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-5'));
     expect(await findRelatedIncidents({ text: 'VPN drops' })).toEqual({ incidents: [inc('ITS-5')], partial: false, failures: [] });
     expect(h.getTicket).not.toHaveBeenCalled();
-    expect(h.searchIncidents).toHaveBeenCalledWith(expect.objectContaining({ key: '', summary: 'VPN drops', serviceIds: [] }));
+    expect(h.searchIncidents).toHaveBeenCalledWith(expect.objectContaining({ key: '', summary: 'VPN drops', serviceIds: [] }), SETTINGS);
     expect(h.visibleIssueKeys).toHaveBeenCalledTimes(1);
     expect(h.visibleIssueKeys).toHaveBeenCalledWith(['ITO-1', 'ITS-5']);
   });
@@ -245,5 +252,48 @@ describe('find tools', () => {
     h.searchResolutions.mockRejectedValue(new Error('jira-search-500'));
     expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], partial: true, failures: ['jira-incidents'] });
     expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], partial: true, failures: ['jira-resolutions'] });
+  });
+});
+
+describe('site not set up (spec Phase 5.5)', () => {
+  beforeEach(() => {
+    h.getSettings.mockResolvedValue(undefined);
+  });
+
+  it('get-ticket-context: the same message as the panel, after the ticket gate, and no build is queued', async () => {
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
+    expect(await getTicketContext('ITS-1', 'caller')).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
+    expect(h.getBundle).not.toHaveBeenCalled();
+    expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
+  });
+
+  it('get-ticket-context: a caller who cannot see the ticket still gets not-accessible, not not-set-up', async () => {
+    h.visibleIssueKeys.mockImplementation(sees());
+    expect(await getTicketContext('ITS-1', 'caller')).toMatchObject({ status: 'not-accessible' });
+  });
+
+  it('get-ticket-context: a ticket outside the bundle projects is not set up even with settings', async () => {
+    h.getSettings.mockResolvedValue({ bundleProjects: ['SUP'], sourceProjects: ['SUP'] });
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
+    expect(await getTicketContext('ITS-1', 'caller')).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
+  });
+
+  it('find tools: not set up for text queries, and for named tickets after the gate, with no search', async () => {
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
+    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
+    expect(await findSimilarResolutions({ ticketKey: 'ITS-1' })).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
+    h.visibleIssueKeys.mockImplementation(sees());
+    expect(await findSimilarResolutions({ ticketKey: 'ITS-1' })).toMatchObject({ status: 'not-accessible' });
+    expect(h.getTicket).not.toHaveBeenCalled();
+    expect(h.searchIncidents).not.toHaveBeenCalled();
+    expect(h.searchResolutions).not.toHaveBeenCalled();
+  });
+
+  it('find tools: work for a named ticket outside the bundle projects, as they search live', async () => {
+    h.getSettings.mockResolvedValue({ bundleProjects: ['SUP'], sourceProjects: ['SUP', 'INC'] });
+    h.visibleIssueKeys.mockImplementation(sees('INC-3', 'ITS-5'));
+    h.getTicket.mockResolvedValue({ key: 'INC-3', projectKey: 'INC', summary: 's', description: '', labels: [], serviceIds: [], status: 'Open', updatedAt: 'u' });
+    h.searchIncidents.mockResolvedValue([{ source: ref('ITS-5'), status: 'active', summary: 'x', relevance: 0.5 }]);
+    expect(await findRelatedIncidents({ ticketKey: 'INC-3' })).toMatchObject({ incidents: [expect.objectContaining({ summary: 'x' })] });
   });
 });

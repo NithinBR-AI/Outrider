@@ -29,6 +29,7 @@ const statusOf = (key: string) => h.store.get(`status:${key}`) as BuildStatus | 
 
 beforeEach(() => {
   h.store.clear();
+  h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010', savedAt: 't' }); // explicit site settings (Phase 5.5)
   h.push.mockReset();
   h.push.mockResolvedValue({ jobId: 'job-1' });
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -115,5 +116,23 @@ describe('enqueueTicketBuild', () => {
     await expect(enqueueTicketBuild('ITS-1', { source: 'unknown' })).rejects.toThrow();
     expect(statusOf('ITS-1')!.buildId).toBe('newer');
     expect(statusOf('ITS-1')!.status).toBe('queued');
+  });
+});
+
+describe('site settings (spec Phase 5.5)', () => {
+  it('builds nothing when the site is not set up', async () => {
+    h.store.delete('settings:site');
+    await onJiraIssueEvent({ eventType: 'avi:jira:updated:issue', issue: { key: 'ITS-6265' } });
+    expect(h.push).not.toHaveBeenCalled();
+    expect(statusOf('ITS-6265')).toBeUndefined();
+  });
+
+  it('follows the configured projects: SUP builds, other projects do not', async () => {
+    h.store.set('settings:site', { bundleProjects: ['SUP'], sourceProjects: ['SUP', 'INC'], savedAt: 't' });
+    await onJiraIssueEvent({ issue: { key: 'SUP-12' } });
+    await onJiraIssueEvent({ issue: { key: 'INC-3' } });
+    await onJiraIssueEvent({ issue: { key: 'ITS-6265' } });
+    expect(h.push).toHaveBeenCalledTimes(1);
+    expect(h.push.mock.calls[0][0].body).toMatchObject({ ticketKey: 'SUP-12' });
   });
 });

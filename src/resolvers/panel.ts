@@ -15,10 +15,13 @@ import { BuildStatus, ViewerBundle } from '../domain/types';
 import { MAX_DISPLAY_ITEMS_PER_SECTION } from '../domain/score';
 import { bundleSourceKeys } from '../domain/authorize';
 import { viewerBundle } from './viewerContext';
+import { getSettings } from '../adapters/settings';
+import { isBundleTicket } from '../domain/settings';
 
 export type PanelState =
   | { state: 'no-bundle' }
   | { state: 'unavailable' }
+  | { state: 'not-set-up' }
   | { state: 'queued' | 'building' | 'failed' | 'superseded'; bundle?: ViewerBundle }
   | { state: 'complete'; bundle: ViewerBundle };
 
@@ -33,7 +36,7 @@ resolver.define('getContext', async (req): Promise<PanelState> => {
 
 /** Builds the viewer's panel state for a ticket. Exported for tests. */
 export async function getPanelContext(ticketKey: string): Promise<PanelState> {
-  const [status, stored] = await Promise.all([getStatus(ticketKey), getBundle(ticketKey)]);
+  const [status, stored, settings] = await Promise.all([getStatus(ticketKey), getBundle(ticketKey), getSettings()]);
 
   let visible: Set<string> | null;
   try {
@@ -45,6 +48,10 @@ export async function getPanelContext(ticketKey: string): Promise<PanelState> {
 
   // Ticket-level gate (§16.1, security test #2). A failed check counts as no access (§16.5).
   if (visible === null || !visible.has(ticketKey)) return { state: 'unavailable' };
+
+  // Not set up (Phase 5.5): no settings, or this project does not get context. Said plainly, so the panel
+  // never waits on "being prepared" for a build that will never run. Checked after the ticket gate.
+  if (!isBundleTicket(settings, ticketKey)) return { state: 'not-set-up' };
 
   const bundle = stored ? forDisplay(await viewerBundle(stored, visible)) : undefined;
   return toPanelState(status, bundle);

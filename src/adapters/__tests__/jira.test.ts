@@ -33,8 +33,12 @@ vi.mock('@forge/api', () => {
   };
 });
 
-import { clearSiteBaseCache, getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, siteBaseUrl, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
+import { clearSiteBaseCache, getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, siteBaseUrl, visibleIssueKeys } from '../jira';
 import { textQuery } from '../../domain/query';
+import { RetrievalSettings } from '../../domain/settings';
+
+// Explicit settings matching the recorded demo site (spec Phase 5.5: tests never rely on built-in constants).
+const SETTINGS: RetrievalSettings = { sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' };
 
 const comments = fixture.comments as Record<string, unknown>;
 
@@ -106,16 +110,16 @@ describe('siteBaseUrl (browse links)', () => {
       const res = demoSite()(path, body) as { status: number; json: unknown };
       return { status: res.status, json: gateway(res.json) };
     };
-    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    const incidents = await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     expect(incidents.find((i) => i.source.id === 'ITO-9647')!.source.url).toBe('https://one-atlas-edlg.atlassian.net/browse/ITO-9647');
-    const resolutions = await searchResolutions(await getTicket('ITS-6265'));
+    const resolutions = await searchResolutions(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     expect(resolutions.find((r) => r.source.id === 'ITO-9642')!.source.url).toBe('https://one-atlas-edlg.atlassian.net/browse/ITO-9642');
   });
 });
 
 describe('getTicket', () => {
   it('maps the issue to a Ticket', async () => {
-    const t = await getTicket('ITS-6265');
+    const t = await getTicket('ITS-6265', SETTINGS);
     expect(t.key).toBe('ITS-6265');
     expect(t.projectKey).toBe('ITS');
     expect(t.summary).toBe('Cannot log in - getting error on login page');
@@ -131,7 +135,7 @@ describe('getTicket', () => {
 
   it('falls back to the key prefix when the project is missing', async () => {
     mock.handler = () => ({ status: 200, json: { id: '1', key: 'ITS-1', self: 'https://x.atlassian.net/rest/api/3/issue/1', fields: {} } });
-    const t = await getTicket('ITS-1');
+    const t = await getTicket('ITS-1', SETTINGS);
     expect(t.projectKey).toBe('ITS');
     expect(t.serviceIds).toEqual([]);
     expect(t.labels).toEqual([]);
@@ -140,13 +144,13 @@ describe('getTicket', () => {
 
   it('throws a short error code when Jira fails', async () => {
     mock.handler = () => ({ status: 404, json: {} });
-    await expect(getTicket('ITS-404')).rejects.toThrow('jira-get-404');
+    await expect(getTicket('ITS-404', SETTINGS)).rejects.toThrow('jira-get-404');
   });
 });
 
 describe('searchIncidents (demo site ITS-6265)', () => {
   it('returns the active login incident and nothing unrelated', async () => {
-    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    const incidents = await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     expect(incidents.map((i) => i.source.id)).toContain('ITO-9647');
     const login = incidents.find((i) => i.source.id === 'ITO-9647')!;
     expect(login.status).toBe('active');
@@ -159,17 +163,17 @@ describe('searchIncidents (demo site ITS-6265)', () => {
   });
 
   it('builds the JQL for incident projects, excludes the ticket itself and limits the window', async () => {
-    await searchIncidents(await getTicket('ITS-6265'));
+    await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     const jql = searches()[0].body!.jql!;
-    expect(jql).toContain(`project in (${SOURCE_PROJECTS.join(', ')})`);
+    expect(jql).toContain(`project in (${SETTINGS.sourceProjects.join(', ')})`);
     expect(jql).toContain('issuetype = "[System] Incident"');
     expect(jql).toContain('key != "ITS-6265"');
     expect(jql).toMatch(/resolved >= -\d+d/);
   });
 
   it('escapes quotes in values interpolated into JQL', async () => {
-    const t = await getTicket('ITS-6265');
-    await searchIncidents({ ...t, key: 'ITS-1" OR project = SECRET OR key = "x' });
+    const t = await getTicket('ITS-6265', SETTINGS);
+    await searchIncidents({ ...t, key: 'ITS-1" OR project = SECRET OR key = "x' }, SETTINGS);
     expect(searches()[0].body!.jql).toContain('key != "ITS-1\\" OR project = SECRET OR key = \\"x"');
   });
 
@@ -178,13 +182,13 @@ describe('searchIncidents (demo site ITS-6265)', () => {
     const many = Array.from({ length: MAX_SECTION_CANDIDATES + 3 }, (_, n) => ({ ...base, key: `ITO-${100 + n}`, id: String(100 + n) }));
     const cancelled = { ...base, key: 'ITO-999', fields: { ...base.fields, status: { name: 'Cancelled', statusCategory: { key: 'done' } } } };
     mock.handler = (path) => (path.startsWith('/rest/api/3/search/jql') ? { status: 200, json: { issues: [cancelled, ...many] } } : demoSite()(path));
-    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    const incidents = await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     expect(incidents).toHaveLength(MAX_SECTION_CANDIDATES);
     expect(incidents.map((i) => i.source.id)).not.toContain('ITO-999');
   });
 
   it('attaches a 0..1 relevance to every incident', async () => {
-    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    const incidents = await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     for (const i of incidents) {
       expect(i.relevance).toBeGreaterThan(0);
       expect(i.relevance).toBeLessThanOrEqual(1);
@@ -196,31 +200,31 @@ describe('searchIncidents (demo site ITS-6265)', () => {
     const resolved = { ...base, key: 'ITO-1', fields: { ...base.fields, status: { name: 'Completed', statusCategory: { key: 'done' } } } };
     const active = { ...base, key: 'ITO-2' };
     mock.handler = (path) => (path.startsWith('/rest/api/3/search/jql') ? { status: 200, json: { issues: [resolved, active] } } : demoSite()(path));
-    const ids = (await searchIncidents(await getTicket('ITS-6265'), new Date('2026-11-21T00:00:00Z'))).map((i) => i.source.id);
+    const ids = (await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS, new Date('2026-11-21T00:00:00Z'))).map((i) => i.source.id);
     expect(ids).toEqual(['ITO-2', 'ITO-1']);
   });
 
   it('is deterministic for a fixed clock', async () => {
-    const t = await getTicket('ITS-6265');
+    const t = await getTicket('ITS-6265', SETTINGS);
     const now = new Date('2026-11-21T00:00:00Z');
-    expect(await searchIncidents(t, now)).toEqual(await searchIncidents(t, now));
+    expect(await searchIncidents(t, SETTINGS, now)).toEqual(await searchIncidents(t, SETTINGS, now));
   });
 
   it('keeps stored excerpts short', async () => {
-    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    const incidents = await searchIncidents(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     for (const i of incidents) expect(i.summary.length).toBeLessThanOrEqual(301);
   });
 
   it('throws when the search fails, so the builder can mark the section as failed', async () => {
-    const t = await getTicket('ITS-6265');
+    const t = await getTicket('ITS-6265', SETTINGS);
     mock.handler = demoSite({ failSearch: true });
-    await expect(searchIncidents(t)).rejects.toThrow('jira-search-500');
+    await expect(searchIncidents(t, SETTINGS)).rejects.toThrow('jira-search-500');
   });
 });
 
 describe('searchResolutions (demo site ITS-6265)', () => {
   it('returns the SSL fix as same requester and similar symptoms, with the fix text', async () => {
-    const resolutions = await searchResolutions(await getTicket('ITS-6265'));
+    const resolutions = await searchResolutions(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     const ssl = resolutions.find((r) => r.source.id === 'ITO-9642');
     expect(ssl).toBeDefined();
     expect(ssl!.matchReason).toBe('both');
@@ -229,18 +233,18 @@ describe('searchResolutions (demo site ITS-6265)', () => {
   });
 
   it('attaches the match strength as relevance', async () => {
-    const ssl = (await searchResolutions(await getTicket('ITS-6265'))).find((r) => r.source.id === 'ITO-9642')!;
+    const ssl = (await searchResolutions(await getTicket('ITS-6265', SETTINGS), SETTINGS)).find((r) => r.source.id === 'ITO-9642')!;
     expect(ssl.relevance).toBeGreaterThanOrEqual(0.2);
     expect(ssl.relevance).toBeLessThanOrEqual(1);
   });
 
   it('does not return unrelated Dashloop, database or VPN fixes', async () => {
-    const ids = (await searchResolutions(await getTicket('ITS-6265'))).map((r) => r.source.id);
+    const ids = (await searchResolutions(await getTicket('ITS-6265', SETTINGS), SETTINGS)).map((r) => r.source.id);
     for (const unrelated of ['ITS-6258', 'ITS-6259', 'ITS-6262', 'ITO-9645', 'ITO-9646']) expect(ids).not.toContain(unrelated);
   });
 
   it('searches the requester separately and excludes cancelled and unresolved tickets', async () => {
-    await searchResolutions(await getTicket('ITS-6265'));
+    await searchResolutions(await getTicket('ITS-6265', SETTINGS), SETTINGS);
     const jqls = searches().map((c) => c.body!.jql!);
     expect(jqls).toHaveLength(2);
     for (const jql of jqls) {
@@ -252,35 +256,35 @@ describe('searchResolutions (demo site ITS-6265)', () => {
   });
 
   it('skips the requester search when the ticket has no requester', async () => {
-    const t = await getTicket('ITS-6265');
-    await searchResolutions({ ...t, requester: undefined });
+    const t = await getTicket('ITS-6265', SETTINGS);
+    await searchResolutions({ ...t, requester: undefined }, SETTINGS);
     expect(searches()).toHaveLength(1);
   });
 
   it('drops only the candidate whose comment fetch fails', async () => {
-    const t = await getTicket('ITS-6265');
+    const t = await getTicket('ITS-6265', SETTINGS);
     mock.handler = demoSite({ failComments: ['ITO-9645'] });
-    const ids = (await searchResolutions(t)).map((r) => r.source.id);
+    const ids = (await searchResolutions(t, SETTINGS)).map((r) => r.source.id);
     expect(ids).toContain('ITO-9642');
   });
 
   it('returns nothing when the only matching ticket has no fix comment', async () => {
-    const t = await getTicket('ITS-6265');
+    const t = await getTicket('ITS-6265', SETTINGS);
     mock.handler = demoSite({ failComments: ['ITO-9642'] });
-    expect((await searchResolutions(t)).map((r) => r.source.id)).not.toContain('ITO-9642');
+    expect((await searchResolutions(t, SETTINGS)).map((r) => r.source.id)).not.toContain('ITO-9642');
   });
 
   it('returns an empty list, not an error, when nothing matches', async () => {
-    const t = await getTicket('ITS-6265');
-    const resolutions = await searchResolutions({ ...t, summary: 'Printer jam on floor three', description: 'Paper tray stuck', requester: undefined, serviceIds: [] });
+    const t = await getTicket('ITS-6265', SETTINGS);
+    const resolutions = await searchResolutions({ ...t, summary: 'Printer jam on floor three', description: 'Paper tray stuck', requester: undefined, serviceIds: [] }, SETTINGS);
     expect(resolutions).toEqual([]);
   });
 });
 
 describe('free-text queries (find-* MCP tools, spec §15.2, §15.3)', () => {
   it('a query without a ticket key leaves the key exclusion out of the JQL entirely', async () => {
-    await searchIncidents(textQuery('VPN'));
-    await searchResolutions(textQuery('VPN'));
+    await searchIncidents(textQuery('VPN'), SETTINGS);
+    await searchResolutions(textQuery('VPN'), SETTINGS);
     for (const c of searches()) {
       expect(c.body!.jql).not.toContain('key !=');
       expect(c.body!.jql).not.toContain('""');
@@ -288,20 +292,20 @@ describe('free-text queries (find-* MCP tools, spec §15.2, §15.3)', () => {
   });
 
   it('free text never reaches JQL: it is only matched in the app', async () => {
-    await searchIncidents(textQuery('VPN" OR project = SECRET'));
+    await searchIncidents(textQuery('VPN" OR project = SECRET'), SETTINGS);
     for (const c of searches()) expect(c.body!.jql).not.toContain('SECRET');
   });
 
   it('skips the same-requester search, since a text query has no requester', async () => {
-    await searchResolutions(textQuery('VPN'));
+    await searchResolutions(textQuery('VPN'), SETTINGS);
     expect(searches()).toHaveLength(1);
   });
 
   it('finds the demo incidents and fixes from short symptom text (recorded demo-site data)', async () => {
-    expect((await searchIncidents(textQuery('login error'))).map((i) => i.source.id)).toContain('ITO-9647');
-    expect((await searchResolutions(textQuery('SSL certificate expired'))).map((r) => r.source.id)).toEqual(['ITO-9642']);
-    expect((await searchIncidents(textQuery('VPN'))).map((i) => i.source.id).sort()).toEqual(['ITO-9646', 'ITO-9649']);
-    expect(await searchIncidents(textQuery('printer jam'))).toEqual([]);
+    expect((await searchIncidents(textQuery('login error'), SETTINGS)).map((i) => i.source.id)).toContain('ITO-9647');
+    expect((await searchResolutions(textQuery('SSL certificate expired'), SETTINGS)).map((r) => r.source.id)).toEqual(['ITO-9642']);
+    expect((await searchIncidents(textQuery('VPN'), SETTINGS)).map((i) => i.source.id).sort()).toEqual(['ITO-9646', 'ITO-9649']);
+    expect(await searchIncidents(textQuery('printer jam'), SETTINGS)).toEqual([]);
   });
 });
 
@@ -415,5 +419,32 @@ describe('liveSourceTexts (verifier input, spec §13.2 step 3)', () => {
   it('tolerates issues without description or comments', async () => {
     mock.handler = () => ({ status: 200, json: { issues: [{ id: '1', key: 'ITS-1', self: 'https://x.atlassian.net/rest/api/3/issue/1', fields: { summary: 'Only a title' } }] } });
     expect((await liveSourceTexts(['ITS-1'])).get('jira-issue:ITS-1')!.text).toBe('Only a title');
+  });
+});
+describe('site settings in retrieval (spec Phase 5.5)', () => {
+  it('searches exactly the configured source projects (acceptance: SUP and INC)', async () => {
+    const supInc: RetrievalSettings = { sourceProjects: ['SUP', 'INC'] };
+    await searchIncidents(textQuery('VPN'), supInc);
+    await searchResolutions(textQuery('VPN'), supInc);
+    for (const c of searches()) {
+      expect(c.body!.jql).toContain('project in (SUP, INC)');
+      expect(c.body!.jql).not.toMatch(/\bITS\b|\bITO\b/);
+    }
+  });
+
+  it('asks Jira only for the configured fields, and works without them', async () => {
+    const plain: RetrievalSettings = { sourceProjects: ['ITS', 'ITO'] };
+    const t = await getTicket('ITS-6265', plain);
+    expect(mock.calls[0].path).not.toContain('customfield_');
+    expect(t.serviceIds).toEqual([]);
+    expect(t.requestTypeId).toBeUndefined();
+    await searchIncidents(t, plain);
+    expect(searches()[0].body).toMatchObject({ fields: expect.not.arrayContaining([expect.stringMatching(/^customfield_/)]) });
+  });
+
+  it('makes no Jira call when there are no usable source projects', async () => {
+    expect(await searchIncidents(textQuery('VPN'), { sourceProjects: [] })).toEqual([]);
+    expect(await searchResolutions(textQuery('VPN'), { sourceProjects: ['bad key)'] })).toEqual([]);
+    expect(mock.calls).toHaveLength(0);
   });
 });

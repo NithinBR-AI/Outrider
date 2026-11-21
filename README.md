@@ -33,13 +33,17 @@ Built on Atlassian Forge for Codegeist 2026.
 | 8b | Summary and rejected-claim counter in the panel, with the matching source text per claim | ✅ (development) |
 | 8c | Live LLM summary generation (Amazon Bedrock via Mantle), coverage rule in the verifier, canned demo summary removed | ✅ (development) |
 | 9 | MCP tools `find-related-incidents` and `find-similar-resolutions` (live search, per-caller filtering), verified with two users via Rovo | ✅ (development) |
-| 9.5–14 | Per-site configuration, Confluence, TWG, demo | 🔜 |
+| 9.5 | Per-site settings page (projects, detected fields), "isn't set up" state, no hardcoded projects or fields; verified on the demo site and a second site | ✅ (development) |
+| 10–14 | Confluence, TWG, demo | 🔜 |
 
 ## Install
 
 > **Judges:** You must be a site admin of the Atlassian site you install on. The app requires installation on both Jira and Confluence.
 
 [Install Outrider](https://developer.atlassian.com/console/install/91f15c4b-555e-4db0-99e1-7567c801fc07?signature=AYABeJea9AN5%2BgVEUoMfUTwDwJMAAAADAAdhd3Mta21zAEthcm46YXdzOmttczp1cy13ZXN0LTI6NzA5NTg3ODM1MjQzOmtleS83MDVlZDY3MC1mNTdjLTQxYjUtOWY5Yi1lM2YyZGNjMTQ2ZTcAuAECAQB4CxqLTo9l4lqXuFjNim1xJM%2Bp%2F3TVP9xHS2BrU5DRRucB3IRbHYCugUXrJrT%2B3qZRfwAAAH4wfAYJKoZIhvcNAQcGoG8wbQIBADBoBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDLwSiW1oRQUP7NZshAIBEIA7XICglS%2BoVEwMrLjoUVsgMgF4U5dMn6c8jEbAwj%2BwEKfulJ0v%2Frz%2FvkLJMaedKu%2FE%2B0HmKBQ9LFiczA0AB2F3cy1rbXMAS2Fybjphd3M6a21zOmV1LXdlc3QtMTo3MDk1ODc4MzUyNDM6a2V5LzQ2MzBjZTZiLTAwYzMtNGRlMi04NzdiLTYyN2UyMDYwZTVjYwC4AQICAHi9bVMAkme4qVQX1fQHo6ePw3H40A7cGfz7yrmSfBWMXgGx1s%2FbJa9p1OYmxHefjQyWAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMasJ8HuRtdj33ChyCAgEQgDuKlLnDahUrzxNtd3QHq9h1oawh2EO2IeiH7K60hup4dLFQGz1DcWZ2kWZiYBcyjvFPF3wBacT%2F8XfFNQAHYXdzLWttcwBLYXJuOmF3czprbXM6dXMtZWFzdC0xOjcwOTU4NzgzNTI0MzprZXkvNmMxMjBiYTAtNGNkNS00OTg1LWI4MmUtNDBhMDQ5NTJjYzU3ALgBAgIAeDYASx0XCjkny4iLV6vz%2BKtEGSGT6kdt0QRpkn6D%2FlVEATjuS4HsiPRVF5%2FWjRHs6E0AAAB%2BMHwGCSqGSIb3DQEHBqBvMG0CAQAwaAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAyYlOz80QTFCAljtRQCARCAO3BbtwjzWy4x0mNH4UxeUxkPgrhttRE0P1Zp9EwnPqCY3b%2FQvv4L9OdNtKUXtzbyjmjRIkkYwMlL9q7EAgAAAAAMAAAQAAAAAAAAAAAAAAAAAE5jtzTNDmMVPSR5GzfBZMT%2F%2F%2F%2F%2FAAAAAQAAAAAAAAAAAAAAAQAAADJqxdE4UiqUgSdvbgvE1DVp5PfTH0x1fTTkhvPSnKyUK%2FjKO1gCGuN5Req2C0W6AMDJSgGgVXJiPyhRkoU4%2B7LneFY%3D&product=confluence&product=jira)
+
+**After installing, a Jira admin must set up Outrider** (about two minutes): choose the projects it works in on its
+settings page, then edit a ticket. Step by step: [Set up Outrider](#set-up-outrider).
 
 ## Demo site
 
@@ -48,6 +52,8 @@ During development it runs the **development** environment of Outrider (the pane
 The install link above installs the **production** environment, which is updated before submission.
 
 **Site:** `one-atlas-edlg.atlassian.net` (expires 2027-02-18)
+
+Outrider is set up there through its [settings page](#set-up-outrider): context for `ITS` tickets, searching `ITS` and `ITO`.
 
 ### See the JSM panel
 
@@ -96,7 +102,9 @@ they also work for tickets that never get a stored context (for example ITO inci
   returned and the answer is marked partial.
 
 For every tool, a ticket the caller cannot see, or one that does not exist, gets the same "not found or no
-access" answer, and nothing is read, searched or queued for it.
+access" answer, and nothing is read, searched or queued for it. On a site that is not [set up](#set-up-outrider),
+the tools answer with the same "isn't set up" message as the panel (after that ticket check), and
+`get-ticket-context` also gives it for tickets outside the projects that get context.
 
 **Known quirks of free-text search:** matching is on keywords, so a one-word query such as "VPN" scores every
 hit as a full match (relevance 1.0), and a generic term can pull in a weak match (on the demo site, "503" also
@@ -253,20 +261,94 @@ to generate summaries. The install screen lists this domain.
   so CI never calls Atlassian APIs.
 - Domain logic (`src/domain`) is held at 100% branch coverage; `npm run coverage` enforces it.
 
-## Current configuration
+## Set up Outrider
 
-The project and field settings are constants in code, matched to the Codegeist demo site:
+Outrider does nothing until a Jira admin sets it up. Until then, its panel says "Outrider isn't set up for this
+project yet. Ask a Jira admin to configure it." and no context is built. Setup takes about two minutes and is done
+once per site.
 
-| Setting | Value | Where |
+### 1. Open the settings page
+
+You must be a **Jira admin** on the site. The page is part of Jira's own settings, not Atlassian Administration
+(`admin.atlassian.com`, which lists products and plans, does not have it). Any of these opens it:
+
+- **From the Outrider panel:** on any ticket, while Outrider is not set up, the panel says "Outrider isn't set up
+  for this project yet" with a link, **Open Outrider settings**.
+- **From the app list in Atlassian Administration:** app management has moved out of Jira, so open
+  [admin.atlassian.com](https://admin.atlassian.com) → your site → **Site settings** → **Connected apps**. (From
+  Jira, **Settings** (cog) → **Marketplace apps** shows "App management has moved to Administration" with a
+  **Take me there** button that opens the same list.) Find **Outrider**; it can have one row per product it is
+  installed in. On the **Jira** row, open the **⋯** menu and choose **Configure**.
+- **Direct link**, replacing `<your-site>` with your site name:
+
+  ```
+  https://<your-site>.atlassian.net/jira/settings/apps/configure/91f15c4b-555e-4db0-99e1-7567c801fc07/9642b7bf-2691-4a10-a588-4149d578afc9
+  ```
+
+  The last two parts are Outrider's app ID and its environment ID; the one above is the **production**
+  environment, which the install link installs. On the demo site, which runs the development environment, the
+  page is at [`/jira/settings/apps/configure/91f15c4b-555e-4db0-99e1-7567c801fc07/e0550813-1dd2-42b6-a586-7b66793ab580`](https://one-atlas-edlg.atlassian.net/jira/settings/apps/configure/91f15c4b-555e-4db0-99e1-7567c801fc07/e0550813-1dd2-42b6-a586-7b66793ab580).
+
+The page is titled **Outrider**. On a site that has not been set up it shows a blue notice: "Outrider isn't set up
+yet."
+### 2. Choose the projects
+
+| Setting | What to choose | Example on the demo site |
 |---|---|---|
-| Projects that get a context bundle | `ITS` | `BUNDLE_PROJECTS` in `src/pipeline/enqueue.ts` |
-| Projects searched for incidents and resolutions | `ITS`, `ITO` | `SOURCE_PROJECTS` in `src/adapters/jira.ts` |
-| Affected services field | `customfield_10039` | `src/adapters/jira.ts` |
-| Request type field | `customfield_10010` | `src/adapters/jira.ts` |
+| **Projects whose tickets get context** | The projects where agents work tickets, usually your service desk projects. The Outrider panel shows context on tickets in these projects; elsewhere it says it isn't set up. | IT Support (`ITS`) |
+| **Projects to search for incidents and past resolutions** | Every project whose tickets Outrider should draw on: the service desk projects themselves (for past resolutions) and any project where incidents are tracked. | `ITS` and `ITO` |
 
-On a site without these projects the panel stays in "Context is being prepared". Making these configurable
-per site is planned before submission.
+- Both lists show only the projects Outrider can see. If a project is missing, Outrider does not have access to it.
+- Choose at least one project in each list, and at most 20.
+- Incidents are found only if they are issues of type **[System] Incident**, the Jira Service Management IT service
+  management type. A site without that type gets no incidents; past resolutions still work.
 
+### 3. Check the fields
+
+| Setting | What it is | Filled in automatically? |
+|---|---|---|
+| **Affected services field** | The Jira Service Management "Affected services" field. Used to break ties between equally relevant results. | Yes, from the site's field types, marked "Detected automatically". |
+| **Request type field** | The Jira Service Management "Request type" field. | Yes, the same way. |
+
+You normally leave both as detected. Field IDs differ between sites (for example `customfield_10039` on the demo
+site and `customfield_10048` on another site we tested), which is why they are detected rather than typed. Choose
+**Not used** if your site has no such field; Outrider still works.
+
+### 4. Save
+
+Click **Save**. Outrider checks every choice against Jira before saving:
+
+- **Success:** a green message, "Saved. Context is built when a ticket in these projects is created or updated:
+  edit a ticket to build its context."
+- **A problem:** a red message naming it, for example "Project SUP doesn't exist or Outrider can't see it."
+  Nothing is saved, and the previous settings stay in effect.
+
+### 5. Build context for a ticket
+
+Context is built when a ticket changes, not when you save the settings. Open a ticket in one of the projects that
+get context, **change any field** (for example Priority), wait up to a minute, then reload the ticket. The
+Outrider panel shows the related incidents and past resolutions and, when there are sources, a summary.
+
+Tickets that existed before setup show "Context is being prepared" until they are next updated. **Refresh** in the
+panel only re-reads stored context; it never starts a build.
+
+### Changing the settings later
+
+Open the same page, change the lists or fields, and save. The new settings apply from the next ticket update.
+Tickets in a project you remove show "isn't set up" again; their stored context is kept but no longer shown.
+
+### If something looks wrong
+
+| What you see | Why | What to do |
+|---|---|---|
+| Panel says "Outrider isn't set up for this project yet" | The site has no saved settings, or this ticket's project is not in "Projects whose tickets get context" | Click **Open Outrider settings** in the panel (Jira admins) and add the project |
+| Panel stays on "Context is being prepared" | The ticket has not changed since setup, or its build is still running | Change a field on the ticket, wait a minute, reload |
+| The page shows "Outrider could not read projects and fields from Jira just now" | Jira did not answer | Reload the page |
+| No incidents ever appear | The searched projects have no issues of type [System] Incident | Add the project where incidents are tracked to "Projects to search" |
+
+Verified on two sites: the demo site (`ITS` / `ITS`, `ITO`; fields `customfield_10039` and `customfield_10010`
+detected) and a second site set up only through this page (`DEMO`, `OD`; Affected services detected as
+`customfield_10048`), where an `OD` ticket then showed the related incident `OD-5` and a live summary.
 ## Architecture
 
 ```

@@ -77,6 +77,7 @@ const settle = async () => {
 
 beforeEach(() => {
   h.store.clear();
+  h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010', savedAt: 't' }); // explicit site settings (Phase 5.5)
   h.pushes = [];
   h.liveTicket = V1;
   h.gate = null;

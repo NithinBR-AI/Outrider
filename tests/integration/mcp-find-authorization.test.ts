@@ -49,6 +49,11 @@ vi.mock('../../src/adapters/jira', () => ({
   },
 }));
 
+// Explicit site settings (Phase 5.5), as on the demo site.
+vi.mock('../../src/adapters/settings', () => ({
+  getSettings: async () => ({ bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' }),
+}));
+
 import { findRelatedIncidents, findSimilarResolutions } from '../../src/resolvers/mcp';
 import { NOT_ACCESSIBLE_MESSAGE } from '../../src/mcp/tools';
 
