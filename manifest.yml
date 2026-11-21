@@ -14,6 +14,8 @@ modules:
       name: Outrider MCP
       tools:
         - get-ticket-context
+        - find-related-incidents
+        - find-similar-resolutions
 
   action:
     - key: get-ticket-context
@@ -27,6 +29,38 @@ modules:
           description: The Jira issue key, e.g. ITS-123.
           type: string
           required: true
+    - key: find-related-incidents
+      name: Find related incidents
+      function: findRelatedIncidents
+      actionVerb: GET
+      description: Find active and recently resolved incidents related to a Jira ticket or to a description of symptoms. Give a ticket key, keywords, or both. Returns only incidents the caller can see.
+      inputs:
+        ticketKey:
+          title: Ticket key
+          description: The Jira issue key, e.g. ITS-123. Optional if keywords are given.
+          type: string
+          required: false
+        keywords:
+          title: Keywords
+          description: Symptoms or terms to match, e.g. "VPN disconnects after login". Optional if a ticket key is given.
+          type: string
+          required: false
+    - key: find-similar-resolutions
+      name: Find similar resolutions
+      function: findSimilarResolutions
+      actionVerb: GET
+      description: Find previously resolved tickets with similar symptoms, with how they were fixed. Give a ticket key, a description of the problem, or both. Returns only tickets the caller can see.
+      inputs:
+        ticketKey:
+          title: Ticket key
+          description: The Jira issue key, e.g. ITS-123. Optional if a description is given.
+          type: string
+          required: false
+        description:
+          title: Description
+          description: The problem in plain words, e.g. "users see a 503 error on the login page". Optional if a ticket key is given.
+          type: string
+          required: false
 
   trigger:
     - key: jira-issue-events
@@ -46,6 +80,10 @@ modules:
 
     - key: getTicketContext
       handler: index.getTicketContext
+    - key: findRelatedIncidents
+      handler: index.findRelatedIncidents
+    - key: findSimilarResolutions
+      handler: index.findSimilarResolutions
 
     - key: onJiraIssueEvent
       handler: index.onJiraIssueEvent

@@ -10,10 +10,11 @@
 //
 // Caller identity is verified on the demo site (6c-3): Rovo/MCP invocations carry the caller in
 // context.principal.accountId, and asUser() inside the action runs with that caller's permissions.
-import { visibleIssueKeys } from '../adapters/jira';
+import { getTicket, searchIncidents, searchResolutions, visibleIssueKeys } from '../adapters/jira';
 import { getBundle, getStatus } from '../adapters/storage';
-import { bundleSourceKeys } from '../domain/authorize';
-import { PendingContext, ViewerBundle } from '../domain/types';
+import { AUTH_JIRA_CHECK_FAILED, bundleSourceKeys } from '../domain/authorize';
+import { MAX_TOOL_RESULTS, textQuery, withHint } from '../domain/query';
+import { Incident, PendingContext, Resolution, Ticket, ViewerBundle } from '../domain/types';
 import { viewerBundle } from '../resolvers/viewerContext';
 import { enqueueTicketBuild } from '../pipeline/enqueue';
 
@@ -106,4 +107,75 @@ export async function getTicketContext(ticketKey: string, callerAccountId: strin
     visible = null;
   }
   return toMcpBundle(await viewerBundle(stored, visible));
+}
+
+// ---- find-related-incidents and find-similar-resolutions (spec §15.2, §15.3) ----
+//
+// Live retrieval on every call, never the stored bundle: these tools are for an agent investigating now,
+// including tickets that never get a bundle (for example ITO incidents). Order:
+// 1. If a ticket is named: authorize the caller for it, AS THE CALLER, before anything else. Not visible,
+//    nonexistent, or a failed check all get the same TicketNotAccessible answer.
+// 2. Retrieve and rank as the app, with the same engine as the bundle (adapters/jira.ts). The ticket wins;
+//    free text is only a hint appended to it (domain/query.ts). Text alone gives a symptom-only query.
+// 3. Keep only results the caller can see (one JQL search as the caller), then cap at MAX_TOOL_RESULTS.
+//    Hidden results leave no trace. A failed check returns nothing, marked partial, never unfiltered items.
+//
+// Deliberate extension of §15.2/§15.3, agreed for agent usability: results come wrapped as { incidents } or
+// { resolutions }, with partial and failures, instead of a bare array. A wrapper lets an agent tell "no
+// results" from "no access" (TicketNotAccessible) and from "could not check" (partial).
+
+export type FindQuery = { ticketKey?: string; text?: string };
+export type FindIncidentsResult = { incidents: Incident[]; partial: boolean; failures: string[] } | TicketNotAccessible;
+export type FindResolutionsResult = { resolutions: Resolution[]; partial: boolean; failures: string[] } | TicketNotAccessible;
+
+// Ticket has its own status field (the Jira status), so "'status' in x" cannot tell the two apart.
+const isNotAccessible = (x: object): x is TicketNotAccessible => (x as { status?: unknown }).status === 'not-accessible' && 'message' in x;
+
+/** The query ticket for a find-* call, or TicketNotAccessible if a named ticket fails the gate. */
+async function queryFor(query: FindQuery): Promise<Ticket | TicketNotAccessible> {
+  if (!query.ticketKey) return textQuery(query.text ?? '');
+  const notAccessible: TicketNotAccessible = { status: 'not-accessible', ticketKey: query.ticketKey, message: NOT_ACCESSIBLE_MESSAGE };
+  try {
+    if (!(await visibleIssueKeys([query.ticketKey])).has(query.ticketKey)) return notAccessible;
+    return withHint(await getTicket(query.ticketKey), query.text);
+  } catch (err) {
+    // Could not verify, or the ticket vanished after the check: not accessible (§16.5).
+    console.error(`MCP find: ticket check failed for ${query.ticketKey}`, err);
+    return notAccessible;
+  }
+}
+
+/** Retrieves as the app, then keeps what the caller can see, capped. Failures return nothing, marked partial. */
+async function findFor<T extends { source: { id: string } }>(
+  query: FindQuery,
+  search: (ticket: Ticket) => Promise<T[]>,
+  sourceFailure: string,
+): Promise<{ items: T[]; partial: boolean; failures: string[] } | TicketNotAccessible> {
+  const ticket = await queryFor(query);
+  if (isNotAccessible(ticket)) return ticket;
+  let found: T[];
+  try {
+    found = await search(ticket);
+  } catch (err) {
+    console.error(`MCP find: ${sourceFailure} failed`, err);
+    return { items: [], partial: true, failures: [sourceFailure] };
+  }
+  if (found.length === 0) return { items: [], partial: false, failures: [] };
+  try {
+    const visible = await visibleIssueKeys(found.map((f) => f.source.id));
+    return { items: found.filter((f) => visible.has(f.source.id)).slice(0, MAX_TOOL_RESULTS), partial: false, failures: [] };
+  } catch (err) {
+    console.error('MCP find: result visibility check failed', err);
+    return { items: [], partial: true, failures: [AUTH_JIRA_CHECK_FAILED] };
+  }
+}
+
+export async function findRelatedIncidents(query: FindQuery): Promise<FindIncidentsResult> {
+  const r = await findFor(query, (t) => searchIncidents(t), 'jira-incidents');
+  return isNotAccessible(r) ? r : { incidents: r.items, partial: r.partial, failures: r.failures };
+}
+
+export async function findSimilarResolutions(query: FindQuery): Promise<FindResolutionsResult> {
+  const r = await findFor(query, (t) => searchResolutions(t), 'jira-resolutions');
+  return isNotAccessible(r) ? r : { resolutions: r.items, partial: r.partial, failures: r.failures };
 }

@@ -32,7 +32,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 8a | Verified summary on the read path (panel and MCP), canned demo summary, verifier-rejection acceptance test | ✅ (development) |
 | 8b | Summary and rejected-claim counter in the panel, with the matching source text per claim | ✅ (development) |
 | 8c | Live LLM summary generation (Amazon Bedrock via Mantle), coverage rule in the verifier, canned demo summary removed | ✅ (development) |
-| 9–14 | Remaining MCP tools, per-site configuration, Confluence, TWG, demo | 🔜 |
+| 9 | MCP tools `find-related-incidents` and `find-similar-resolutions` (live search, per-caller filtering), verified with two users via Rovo | ✅ (development) |
+| 9.5–14 | Per-site configuration, Confluence, TWG, demo | 🔜 |
 
 ## Install
 
@@ -60,20 +61,47 @@ Context is built when a ticket is created or updated, not when the panel opens. 
 since Outrider was installed shows "Context is being prepared": edit any field (for example Urgency), wait a
 minute or two for the Jira event, then press **Refresh** at the top of the panel. Refresh only re-reads stored context.
 
-### Test the MCP tool via Rovo Studio
+### Test the MCP tools via Rovo Studio
 
 1. Open any Jira page on the demo site and click **Ask Rovo** (top-right)
 2. Click the agent selector dropdown → **Create agent** → **Start from blank**
-3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context (development)** → **Add**
-4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6265`
-5. The agent answers with the related active incident (ITO-9647), the past resolution (ITO-9642) and the
-   source-matched summary claims; any claim whose wording could not be matched comes back separately as unsupported
+3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context**, **Find related
+   incidents** and **Find similar resolutions** (each marked "(development)" on the demo site) → **Add**.
+   An agent only uses the tools added to it; tools added to the app later must be added to the agent too.
+4. Click **Test** (top-right) and try:
+   - `Use the get-ticket-context tool with ticketKey ITS-6265`: the related active incident (ITO-9647), the past
+     resolution (ITO-9642) and the source-matched summary claims; any claim whose wording could not be matched
+     comes back separately as unsupported
+   - `Find incidents related to ITS-6265`: ITO-9647 (active) and ITO-9642 (resolved)
+   - `Find similar resolutions for users seeing 503 errors on the login page`: ITO-9642, with how it was fixed
+   - `Find incidents about VPN`: ITO-9649 (active) and ITO-9646 (resolved)
 
-The tool returns the same context as the panel, filtered for whoever is asking: incidents and resolutions with
-source links and freshness (`builtAt`), plus the verified summary (see [Evidence-gated summary](#evidence-gated-summary)).
-Internal build fields are left out. For a ticket with no context yet it
-answers "being prepared" and queues a build; ask again a minute later. A ticket the caller cannot see, or one that
-does not exist, gets the same "not found or no access" answer.
+**`get-ticket-context`** (input: `ticketKey`) returns the same context as the panel, filtered for whoever is asking:
+incidents and resolutions with source links and freshness (`builtAt`), plus the verified summary (see
+[Evidence-gated summary](#evidence-gated-summary)). Internal build fields are left out. For a ticket with no context
+yet it answers "being prepared" and queues a build; ask again a minute later.
+
+**`find-related-incidents`** (inputs: `ticketKey` and/or `keywords`) and **`find-similar-resolutions`** (inputs:
+`ticketKey` and/or `description`) search live on every call, with the same matching and ranking as the panel, so
+they also work for tickets that never get a stored context (for example ITO incidents):
+
+- **Ticket and text:** the ticket wins; the text is only a hint added to it. Text alone searches by symptoms.
+  The issue the user is viewing is used only when no input is given at all.
+- **Results:** at most 5, the same as the panel shows per section. Each carries a source link, freshness
+  (`startedAt` or `resolvedAt`), relevance, and for resolutions the fix text and match reason.
+- **Shape:** `{ incidents: [...] }` or `{ resolutions: [...] }`, with `partial` and `failures`. This wraps the
+  plain lists in spec §15.2/§15.3 on purpose, so an agent can tell "nothing found" from "no access" and from
+  "could not check".
+- **Filtering:** results the caller cannot see are dropped without a trace. If the check fails, nothing is
+  returned and the answer is marked partial.
+
+For every tool, a ticket the caller cannot see, or one that does not exist, gets the same "not found or no
+access" answer, and nothing is read, searched or queued for it.
+
+**Known quirks of free-text search:** matching is on keywords, so a one-word query such as "VPN" scores every
+hit as a full match (relevance 1.0), and a generic term can pull in a weak match (on the demo site, "503" also
+finds the unrelated Webstore incident ITO-9630, at relevance 0.33). A resolved incident can appear in both
+find tools, because each tool is independent; the panel shows it once.
 
 ### View runtime logs
 
@@ -198,10 +226,13 @@ to generate summaries. The install screen lists this domain.
   the viewer cannot see into looks the same as an empty one.
 - **Check fails:** nothing is shown. A failed permission check is treated as "not authorized".
 - **Revoked access** takes effect on the next read; the stored context does not need to be rebuilt.
-- **MCP tool:** the caller is taken from the Rovo invocation context (`principal.accountId`), never from the tool
-  inputs, and the ticket is checked as that caller before anything else: no build is queued and nothing is revealed
-  for a ticket the caller cannot see. Results then go through the same viewer filter as the panel. Verified via Rovo
-  with the same two users: one received the ITO incident and fix for ITS-6265, the other received none.
+- **MCP tools:** the caller is taken from the Rovo invocation context (`principal.accountId`), never from the tool
+  inputs, and a named ticket is checked as that caller before anything else: no build is queued, nothing is read
+  or searched, and nothing is revealed for a ticket the caller cannot see. Results then go through the same viewer
+  filter as the panel. Verified via Rovo with the same two users: for `get-ticket-context` one received the ITO
+  incident and fix for ITS-6265, the other received none. For the find tools, the ITO user got ITO-9647, ITO-9642,
+  ITO-9649 and ITO-9646 across four queries; the ITS-only user got no ITO result for any of them, and for
+  ITO-9647 got the "does not exist or no access" answer.
 - Verified on the demo site with two real users: an agent with ITS and ITO access sees the related ITO incident
   and fix on ITS-6265; an ITS-only agent sees empty sections. Granting and then revoking ITO access for the
   second user made the items appear and disappear on Refresh, with the same stored context.
@@ -211,7 +242,7 @@ to generate summaries. The install screen lists this domain.
 - Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
 - Integration suites in `tests/integration/` run the real pipeline, storage and panel code with Jira and KVS
   simulated: concurrent builds for one ticket, revoked access after a build, read authorization across viewers,
-  MCP caller authorization, and verifier rejection (a recorded Qwen3-235B response for ITS-6265,
+  MCP caller authorization for `get-ticket-context` and for the two find tools, and verifier rejection (a recorded Qwen3-235B response for ITS-6265,
   `tests/fixtures/mantle-its-6265.json`, checked against real demo-site text).
 - The Bedrock adapter is tested with `fetch` mocked: request shape, fallback, timeouts and errors. CI never calls
   the model.

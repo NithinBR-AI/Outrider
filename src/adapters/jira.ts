@@ -84,6 +84,11 @@ function jqlString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+// Excludes the ticket itself. A free-text query (domain/query.ts) has no key, so there is nothing to exclude.
+function notSelf(ticket: Ticket): string {
+  return ticket.key ? ` AND key != ${jqlString(ticket.key)}` : '';
+}
+
 // Forge routes requestJira through the API gateway, so issue.self is
 // https://api.atlassian.com/ex/jira/<cloudId>/rest/... rather than the site. Browse links need the
 // site URL, which serverInfo returns. Cached per cloud ID. A failed lookup is not cached and falls back
@@ -241,7 +246,7 @@ export async function getTicket(ticketKey: string): Promise<Ticket> {
 export async function searchIncidents(ticket: Ticket, now: Date = new Date()): Promise<Incident[]> {
   const projects = SOURCE_PROJECTS.join(', ');
   const jql =
-    `project in (${projects}) AND issuetype = "[System] Incident" AND key != ${jqlString(ticket.key)} ` +
+    `project in (${projects}) AND issuetype = "[System] Incident"${notSelf(ticket)} ` +
     `AND (statusCategory != Done OR resolved >= -${RECENT_INCIDENT_DAYS}d) ORDER BY created DESC`;
   const issues = await searchJql(jql, CANDIDATE_FIELDS, INCIDENT_CANDIDATES);
   const keywords = extractKeywords(ticket.summary, ticket.description);
@@ -277,7 +282,7 @@ export async function searchResolutions(ticket: Ticket, now: Date = new Date()):
   const projects = SOURCE_PROJECTS.join(', ');
   const base =
     `project in (${projects}) AND statusCategory = Done AND status != Cancelled ` +
-    `AND resolved >= -${RESOLUTION_LOOKBACK_DAYS}d AND key != ${jqlString(ticket.key)}`;
+    `AND resolved >= -${RESOLUTION_LOOKBACK_DAYS}d${notSelf(ticket)}`;
   const requesterId = ticket.requester?.accountId;
 
   const [bySymptom, byRequester] = await Promise.all([

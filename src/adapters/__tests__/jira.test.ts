@@ -34,6 +34,7 @@ vi.mock('@forge/api', () => {
 });
 
 import { clearSiteBaseCache, getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, siteBaseUrl, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
+import { textQuery } from '../../domain/query';
 
 const comments = fixture.comments as Record<string, unknown>;
 
@@ -273,6 +274,34 @@ describe('searchResolutions (demo site ITS-6265)', () => {
     const t = await getTicket('ITS-6265');
     const resolutions = await searchResolutions({ ...t, summary: 'Printer jam on floor three', description: 'Paper tray stuck', requester: undefined, serviceIds: [] });
     expect(resolutions).toEqual([]);
+  });
+});
+
+describe('free-text queries (find-* MCP tools, spec §15.2, §15.3)', () => {
+  it('a query without a ticket key leaves the key exclusion out of the JQL entirely', async () => {
+    await searchIncidents(textQuery('VPN'));
+    await searchResolutions(textQuery('VPN'));
+    for (const c of searches()) {
+      expect(c.body!.jql).not.toContain('key !=');
+      expect(c.body!.jql).not.toContain('""');
+    }
+  });
+
+  it('free text never reaches JQL: it is only matched in the app', async () => {
+    await searchIncidents(textQuery('VPN" OR project = SECRET'));
+    for (const c of searches()) expect(c.body!.jql).not.toContain('SECRET');
+  });
+
+  it('skips the same-requester search, since a text query has no requester', async () => {
+    await searchResolutions(textQuery('VPN'));
+    expect(searches()).toHaveLength(1);
+  });
+
+  it('finds the demo incidents and fixes from short symptom text (recorded demo-site data)', async () => {
+    expect((await searchIncidents(textQuery('login error'))).map((i) => i.source.id)).toContain('ITO-9647');
+    expect((await searchResolutions(textQuery('SSL certificate expired'))).map((r) => r.source.id)).toEqual(['ITO-9642']);
+    expect((await searchIncidents(textQuery('VPN'))).map((i) => i.source.id).sort()).toEqual(['ITO-9646', 'ITO-9649']);
+    expect(await searchIncidents(textQuery('printer jam'))).toEqual([]);
   });
 });
 

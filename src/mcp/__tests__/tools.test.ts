@@ -8,12 +8,17 @@ const h = vi.hoisted(() => ({
   getBundle: vi.fn(),
   getStatus: vi.fn(),
   enqueueTicketBuild: vi.fn(),
+  getTicket: vi.fn(),
+  searchIncidents: vi.fn(),
+  searchResolutions: vi.fn(),
 }));
-vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys }));
+vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys, getTicket: h.getTicket, searchIncidents: h.searchIncidents, searchResolutions: h.searchResolutions }));
 vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
 vi.mock('../../pipeline/enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
 
-import { CLAIMS_NOTE, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
+import { CLAIMS_NOTE, findRelatedIncidents, findSimilarResolutions, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
+import { MAX_TOOL_RESULTS } from '../../domain/query';
+import { Incident, Resolution, Ticket } from '../../domain/types';
 import { AUTH_JIRA_CHECK_FAILED } from '../../domain/authorize';
 
 const ref = (id: string) => ({ kind: 'jira-issue' as const, id, url: `https://x/browse/${id}`, title: id, updatedAt: 'u' });
@@ -157,5 +162,88 @@ describe('bundle exists', () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
     await getTicketContext('ITS-1', 'caller');
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
+  });
+});
+
+// ---- find-related-incidents and find-similar-resolutions (spec §15.2, §15.3) ----
+
+describe('find tools', () => {
+  const its1: Ticket = { key: 'ITS-1', projectKey: 'ITS', summary: 'Cannot log in', description: 'Generic error', labels: [], serviceIds: [], status: 'Open', updatedAt: 'u' };
+  const inc = (id: string): Incident => ({ source: ref(id), status: 'active', summary: `${id} text`, relevance: 0.5 });
+  const res = (id: string): Resolution => ({ source: ref(id), resolvedAt: 't', resolutionText: `${id} fix`, matchReason: 'same-symptom', relevance: 0.4 });
+
+  beforeEach(() => {
+    h.getTicket.mockReset().mockResolvedValue(its1);
+    h.searchIncidents.mockReset().mockResolvedValue([inc('ITO-1'), inc('ITS-5')]);
+    h.searchResolutions.mockReset().mockResolvedValue([res('ITO-2'), res('ITS-6')]);
+  });
+
+  it('with a ticket the caller cannot see: not accessible, and no ticket read or search happens', async () => {
+    h.visibleIssueKeys.mockImplementation(sees());
+    expect(await findRelatedIncidents({ ticketKey: 'ITS-1' })).toEqual({ status: 'not-accessible', ticketKey: 'ITS-1', message: NOT_ACCESSIBLE_MESSAGE });
+    expect(await findSimilarResolutions({ ticketKey: 'ITS-1' })).toEqual({ status: 'not-accessible', ticketKey: 'ITS-1', message: NOT_ACCESSIBLE_MESSAGE });
+    expect(h.getTicket).not.toHaveBeenCalled();
+    expect(h.searchIncidents).not.toHaveBeenCalled();
+    expect(h.searchResolutions).not.toHaveBeenCalled();
+  });
+
+  it('treats a failed ticket check, or a ticket that vanished after the check, as not accessible', async () => {
+    h.visibleIssueKeys.mockRejectedValueOnce(new Error('jira-visibility-503'));
+    expect(await findRelatedIncidents({ ticketKey: 'ITS-1' })).toMatchObject({ status: 'not-accessible' });
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
+    h.getTicket.mockRejectedValueOnce(new Error('jira-get-404'));
+    expect(await findRelatedIncidents({ ticketKey: 'ITS-1' })).toMatchObject({ status: 'not-accessible' });
+  });
+
+  it('searches live from the current ticket and keeps only results the caller can see', async () => {
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITS-5', 'ITS-6'));
+    expect(await findRelatedIncidents({ ticketKey: 'ITS-1' })).toEqual({ incidents: [inc('ITS-5')], partial: false, failures: [] });
+    expect(await findSimilarResolutions({ ticketKey: 'ITS-1' })).toEqual({ resolutions: [res('ITS-6')], partial: false, failures: [] });
+    expect(h.searchIncidents).toHaveBeenCalledWith(its1);
+    expect(h.getBundle).not.toHaveBeenCalled(); // never the stored bundle
+    expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
+  });
+
+  it('the ticket wins; free text is appended to its description as a hint', async () => {
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
+    await findRelatedIncidents({ ticketKey: 'ITS-1', text: 'after the SSO change' });
+    expect(h.searchIncidents).toHaveBeenCalledWith({ ...its1, description: 'Generic error\nafter the SSO change' });
+  });
+
+  it('free text alone searches symptoms only, with no ticket check and no ticket read', async () => {
+    h.visibleIssueKeys.mockImplementation(sees('ITS-5'));
+    expect(await findRelatedIncidents({ text: 'VPN drops' })).toEqual({ incidents: [inc('ITS-5')], partial: false, failures: [] });
+    expect(h.getTicket).not.toHaveBeenCalled();
+    expect(h.searchIncidents).toHaveBeenCalledWith(expect.objectContaining({ key: '', summary: 'VPN drops', serviceIds: [] }));
+    expect(h.visibleIssueKeys).toHaveBeenCalledTimes(1);
+    expect(h.visibleIssueKeys).toHaveBeenCalledWith(['ITO-1', 'ITS-5']);
+  });
+
+  it('caps results after filtering, so hidden results never use up a slot', async () => {
+    const many = Array.from({ length: MAX_TOOL_RESULTS + 3 }, (_, n) => inc(`ITS-${100 + n}`));
+    h.searchIncidents.mockResolvedValue([inc('ITO-1'), inc('ITO-2'), ...many]);
+    h.visibleIssueKeys.mockImplementation(async (asked: string[]) => new Set(asked.filter((k) => k.startsWith('ITS-'))));
+    const r = (await findRelatedIncidents({ text: 'x' })) as { incidents: Incident[] };
+    expect(r.incidents.map((i) => i.source.id)).toEqual(many.slice(0, MAX_TOOL_RESULTS).map((i) => i.source.id));
+  });
+
+  it('empty results are valid, with no visibility call needed', async () => {
+    h.searchResolutions.mockResolvedValue([]);
+    h.visibleIssueKeys.mockImplementation(sees());
+    expect(await findSimilarResolutions({ text: 'printer jam' })).toEqual({ resolutions: [], partial: false, failures: [] });
+    expect(h.visibleIssueKeys).not.toHaveBeenCalled();
+  });
+
+  it('a failed result check returns nothing, marked partial, never unfiltered results', async () => {
+    h.visibleIssueKeys.mockRejectedValue(new Error('jira-visibility-503'));
+    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], partial: true, failures: [AUTH_JIRA_CHECK_FAILED] });
+    expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], partial: true, failures: [AUTH_JIRA_CHECK_FAILED] });
+  });
+
+  it('a failed search returns nothing, marked partial with the source that failed', async () => {
+    h.searchIncidents.mockRejectedValue(new Error('jira-search-500'));
+    h.searchResolutions.mockRejectedValue(new Error('jira-search-500'));
+    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], partial: true, failures: ['jira-incidents'] });
+    expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], partial: true, failures: ['jira-resolutions'] });
   });
 });

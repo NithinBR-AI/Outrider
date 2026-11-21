@@ -3,12 +3,77 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const tool = vi.hoisted(() => vi.fn());
-vi.mock('../../mcp/tools', () => ({ getTicketContext: tool }));
+const find = vi.hoisted(() => ({ incidents: vi.fn(), resolutions: vi.fn() }));
+vi.mock('../../mcp/tools', () => ({ getTicketContext: tool, findRelatedIncidents: find.incidents, findSimilarResolutions: find.resolutions }));
 
-import { getTicketContext, resolveTicketKey } from '../mcp';
+import { findRelatedIncidents, findSimilarResolutions, getTicketContext, resolveFindQuery, resolveTicketKey } from '../mcp';
+import { MAX_QUERY_CHARS } from '../../domain/query';
 
 beforeEach(() => {
   tool.mockReset().mockResolvedValue({ status: 'pending' });
+  find.incidents.mockReset().mockResolvedValue({ incidents: [], partial: false, failures: [] });
+  find.resolutions.mockReset().mockResolvedValue({ resolutions: [], partial: false, failures: [] });
+});
+
+describe('resolveFindQuery (find-* tool inputs)', () => {
+  const page = { context: { jira: { issueKey: 'ITS-6265' } } };
+
+  it('takes a valid ticket key, normalized, with optional free text', () => {
+    expect(resolveFindQuery({ ticketKey: ' its-1 ' }, 'keywords')).toEqual({ ticketKey: 'ITS-1', text: undefined });
+    expect(resolveFindQuery({ ticketKey: 'ITS-1', keywords: '  VPN  drops ' }, 'keywords')).toEqual({ ticketKey: 'ITS-1', text: 'VPN drops' });
+    expect(resolveFindQuery({ ticketKey: 'ITS-1', description: '503 on login' }, 'description')).toEqual({ ticketKey: 'ITS-1', text: '503 on login' });
+  });
+
+  it('rejects a malformed ticket key instead of silently searching the text', () => {
+    expect(resolveFindQuery({ ticketKey: 'the login ticket', keywords: 'VPN' }, 'keywords')).toMatchObject({ status: 'invalid-request' });
+    expect(resolveFindQuery({ ticketKey: 'ITS-1) OR project = X', keywords: 'VPN' }, 'keywords')).toMatchObject({ status: 'invalid-request' });
+  });
+
+  it('free text alone does not pull in the issue the user is viewing', () => {
+    expect(resolveFindQuery({ keywords: 'VPN', ...page }, 'keywords')).toEqual({ text: 'VPN' });
+  });
+
+  it('uses the viewed issue only when no input is given at all', () => {
+    expect(resolveFindQuery({ ...page }, 'keywords')).toEqual({ ticketKey: 'ITS-6265' });
+    expect(resolveFindQuery({ keywords: '   ', ...page }, 'keywords')).toEqual({ ticketKey: 'ITS-6265' });
+  });
+
+  it('reads only its own text field, and caps it', () => {
+    expect(resolveFindQuery({ description: 'VPN' }, 'keywords')).toMatchObject({ status: 'invalid-request' });
+    expect((resolveFindQuery({ keywords: 'x'.repeat(MAX_QUERY_CHARS + 10) }, 'keywords') as { text: string }).text).toHaveLength(MAX_QUERY_CHARS);
+  });
+
+  it('asks for a key or text when there is neither', () => {
+    expect(resolveFindQuery({}, 'keywords')).toEqual({ status: 'invalid-request', message: 'Provide a Jira issue key such as ITS-123, or keywords.' });
+    expect(resolveFindQuery({}, 'description')).toEqual({ status: 'invalid-request', message: 'Provide a Jira issue key such as ITS-123, or description.' });
+  });
+});
+
+describe('find-* handlers', () => {
+  const caller = { principal: { accountId: 'user-a' } };
+
+  it('refuse without a signed-in caller and never call the tool', async () => {
+    for (const ctx of [undefined, {}, { principal: {} }, { principal: { accountId: '' } }]) {
+      expect(await findRelatedIncidents({ keywords: 'VPN' }, ctx)).toEqual({ status: 'invalid-request', message: 'This tool needs a signed-in user.' });
+      expect(await findSimilarResolutions({ description: 'VPN' }, ctx)).toMatchObject({ status: 'invalid-request' });
+    }
+    expect(find.incidents).not.toHaveBeenCalled();
+    expect(find.resolutions).not.toHaveBeenCalled();
+  });
+
+  it('pass the resolved query to the tool', async () => {
+    await findRelatedIncidents({ ticketKey: 'its-1', keywords: 'VPN' }, caller);
+    expect(find.incidents).toHaveBeenCalledWith({ ticketKey: 'ITS-1', text: 'VPN' });
+    await findSimilarResolutions({ description: '503 errors' }, caller);
+    expect(find.resolutions).toHaveBeenCalledWith({ text: '503 errors' });
+  });
+
+  it('return invalid-request without calling the tool when the input is unusable', async () => {
+    expect(await findRelatedIncidents({}, caller)).toMatchObject({ status: 'invalid-request' });
+    expect(await findSimilarResolutions(undefined as unknown as Record<string, unknown>, caller)).toMatchObject({ status: 'invalid-request' });
+    expect(find.incidents).not.toHaveBeenCalled();
+    expect(find.resolutions).not.toHaveBeenCalled();
+  });
 });
 
 describe('resolveTicketKey', () => {
