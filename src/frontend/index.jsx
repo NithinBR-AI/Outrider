@@ -2,13 +2,14 @@
 // Renders the latest stored context bundle for this ticket. Read-only: no interaction here
 // changes the bundle or starts a build (spec §17.7).
 import React, { useEffect, useState } from 'react';
-import ForgeReconciler, { Box, Button, Heading, Inline, Link, Lozenge, SectionMessage, Spinner, Stack, Strong, Text } from '@forge/react';
+import ForgeReconciler, { Box, Button, Em, Heading, Inline, Link, Lozenge, SectionMessage, Spinner, Stack, Strike, Strong, Text } from '@forge/react';
 import { invoke } from '@forge/bridge';
 
 // When no bundle exists yet, check once more after this delay (spec §17.6: one poll, no spinner loop).
 const POLL_ONCE_AFTER_MS = 5000;
 
 const STATUS_APPEARANCE = { active: 'removed', monitoring: 'moved', resolved: 'success' };
+const STATUS_LABEL = { active: 'Active', monitoring: 'Monitoring', resolved: 'Resolved' };
 const MATCH_REASON_LABEL = { 'same-symptom': 'Similar symptoms', 'same-requester': 'Same requester', both: 'Same requester, similar symptoms' };
 
 function formatDate(iso) {
@@ -39,10 +40,11 @@ const ItemMeta = ({ relevance, label, iso }) => {
 const IncidentItem = ({ incident }) => (
   <Box paddingBlock="space.100">
     <Stack space="space.050">
-      <Inline space="space.100" alignBlock="center">
-        <Lozenge appearance={STATUS_APPEARANCE[incident.status] ?? 'default'}>{incident.status}</Lozenge>
-        <Link href={incident.source.url} openNewTab>{incident.source.id}: {incident.source.title}</Link>
-      </Inline>
+      {/* Lozenge on its own line: inside an Inline next to a long link it was truncated ("act…"). */}
+      <Box>
+        <Lozenge appearance={STATUS_APPEARANCE[incident.status] ?? 'default'}>{STATUS_LABEL[incident.status] ?? incident.status}</Lozenge>
+      </Box>
+      <Link href={incident.source.url} openNewTab>{incident.source.id}: {incident.source.title}</Link>
       {incident.summary ? <Text>{incident.summary}</Text> : null}
       <ItemMeta relevance={incident.relevance} label="Started" iso={incident.startedAt ?? incident.source.updatedAt} />
     </Stack>
@@ -52,15 +54,82 @@ const IncidentItem = ({ incident }) => (
 const ResolutionItem = ({ resolution }) => (
   <Box paddingBlock="space.100">
     <Stack space="space.050">
-      <Inline space="space.100" alignBlock="center">
+      <Box>
         <Lozenge>{MATCH_REASON_LABEL[resolution.matchReason] ?? resolution.matchReason}</Lozenge>
-        <Link href={resolution.source.url} openNewTab>{resolution.source.id}: {resolution.source.title}</Link>
-      </Inline>
+      </Box>
+      <Link href={resolution.source.url} openNewTab>{resolution.source.id}: {resolution.source.title}</Link>
       <Text>{resolution.resolutionText}</Text>
       <ItemMeta relevance={resolution.relevance} label="Resolved" iso={resolution.resolvedAt} />
     </Stack>
   </Box>
 );
+
+// ---- Summary (spec §17.3) ----
+// The resolver sends only claims already verified for this viewer: each kept claim shares a verbatim
+// span with its cited source. Wording follows spec §1.4 and §13.4: "claims with matching source spans",
+// never "verified". The rejected list only ever contains no-matching-span rejections.
+const REJECTION_REASON_LABEL = { 'no-matching-span': "the cited source doesn't contain this" };
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+const ClaimItem = ({ claim }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Box paddingBlock="space.050">
+      <Stack space="space.050">
+        <Text>{claim.text}</Text>
+        <Inline>
+          <Button appearance="subtle" spacing="compact" onClick={() => setOpen(!open)}>
+            {open ? 'Hide sources' : 'Show sources'}
+          </Button>
+        </Inline>
+        {open ? (
+          <Stack space="space.050">
+            <Text size="small" color="color.text.subtlest">From the source:</Text>
+            <Text><Em>“{claim.span}”</Em></Text>
+            <Link href={claim.source.url} openNewTab>{claim.source.id}: {claim.source.title}</Link>
+          </Stack>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+};
+
+const RejectedList = ({ rejected }) => (
+  <Stack space="space.100">
+    {rejected.map((r, i) => (
+      <Stack key={i} space="space.025">
+        <Text><Strike>{r.text}</Strike></Text>
+        <Text size="small" color="color.text.subtlest">Removed: {REJECTION_REASON_LABEL[r.reason] ?? r.reason}</Text>
+      </Stack>
+    ))}
+  </Stack>
+);
+
+const Summary = ({ summary }) => {
+  const [showRejected, setShowRejected] = useState(false);
+  const rejected = summary.rejected ?? [];
+  return (
+    <Stack space="space.100">
+      <Inline space="space.100" alignBlock="center">
+        <Heading size="small">Summary</Heading>
+        {summary.origin === 'demo-fixture' ? <Lozenge appearance="new">Demo fixture</Lozenge> : null}
+      </Inline>
+      <Text size="small" color="color.text.subtlest">
+        {plural(summary.claims.length, 'claim with a matching source span', 'claims with matching source spans')}
+      </Text>
+      {summary.claims.map((c, i) => <ClaimItem key={i} claim={c} />)}
+      {rejected.length > 0 ? (
+        <Inline space="space.050" alignBlock="center">
+          <Text size="small" color="color.text.subtlest">{rejected.length} rejected ·</Text>
+          <Button appearance="subtle" spacing="compact" onClick={() => setShowRejected(!showRejected)}>
+            {showRejected ? 'hide' : 'see why'}
+          </Button>
+        </Inline>
+      ) : null}
+      {showRejected ? <RejectedList rejected={rejected} /> : null}
+    </Stack>
+  );
+};
 
 // Empty sections stay visible so the viewer can see the section was evaluated (spec §17.2).
 const Section = ({ title, items, render }) => (
@@ -75,6 +144,8 @@ const Bundle = ({ bundle }) => (
     {bundle.partial ? (
       <SectionMessage appearance="warning"><Text>Some sources are unavailable.</Text></SectionMessage>
     ) : null}
+    {/* No summary means none survived verification for this viewer: nothing is rendered (spec §17.3). */}
+    {bundle.summary && bundle.summary.claims && bundle.summary.claims.length > 0 ? <Summary summary={bundle.summary} /> : null}
     <Section title="Active and recent incidents" items={bundle.incidents} render={(i) => <IncidentItem key={i.source.id} incident={i} />} />
     <Section title="Past resolutions" items={bundle.resolutions} render={(r) => <ResolutionItem key={r.source.id} resolution={r} />} />
   </Stack>

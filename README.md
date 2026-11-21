@@ -30,7 +30,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 6c-3 | MCP caller identity and authorization gate for `get-ticket-context`, verified with two users via Rovo | ✅ (development) |
 | 7 | Source-span verifier (tested against real demo-site text; used by the summary in step 8) | ✅ |
 | 8a | Verified summary on the read path (panel and MCP), canned demo summary, verifier-rejection acceptance test | ✅ (development) |
-| 8b–8c | Summary and rejected-claim counter in the panel; LLM summary generation | 🔜 |
+| 8b | Summary and rejected-claim counter in the panel, with the matching source text per claim | ✅ (development) |
+| 8c | LLM summary generation | 🔜 |
 | 9–14 | Remaining MCP tools, per-site configuration, Confluence, TWG, demo | 🔜 |
 
 ## Install
@@ -124,6 +125,8 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
   distinctive words, so stock phrases like "the user cannot" never count. Matching ignores case, spacing,
   Markdown and typographic quotes. This proves a text match, not that the claim is true.
 - A claim with no matching span is rejected and counted, with the reason "no matching source span".
+- In the panel, each shown claim lists its source and the matching text ("From the source"). Rejected claims sit
+  behind "see why", struck through, marked "Removed: the cited source doesn't contain this".
 - A claim with no citation, or citing a source the viewer cannot see, is left out entirely: not shown, not
   counted, so nothing reveals it existed. If no claim survives, there is no summary at all.
 - Through MCP, rejected claims are returned as `unsupportedClaims`, each with a note telling the agent the claim is

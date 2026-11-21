@@ -84,15 +84,44 @@ function jqlString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function browseUrl(issue: JiraIssue): string {
-  return `${new URL(issue.self).origin}/browse/${issue.key}`;
+// Forge routes requestJira through the API gateway, so issue.self is
+// https://api.atlassian.com/ex/jira/<cloudId>/rest/... rather than the site. Browse links need the
+// site URL, which serverInfo returns. Cached per cloud ID. A failed lookup is not cached and falls back
+// to the self origin: a bad link is better than dropping the incidents or the summary over it.
+const GATEWAY_HOST = 'api.atlassian.com';
+const siteBaseCache = new Map<string, Promise<string>>();
+
+export async function siteBaseUrl(self: string | undefined): Promise<string> {
+  if (!self) return '';
+  const url = new URL(self);
+  if (url.hostname !== GATEWAY_HOST) return url.origin;
+  const cloudId = url.pathname.split('/')[3] ?? '';
+  let base = siteBaseCache.get(cloudId);
+  if (!base) {
+    base = jiraGet<{ baseUrl?: string }>(route`/rest/api/3/serverInfo`).then((info) => {
+      if (!info.baseUrl) throw new Error('jira-serverinfo-no-baseurl');
+      return new URL(info.baseUrl).origin;
+    });
+    siteBaseCache.set(cloudId, base);
+  }
+  try {
+    return await base;
+  } catch {
+    siteBaseCache.delete(cloudId);
+    return url.origin;
+  }
 }
 
-function toSourceRef(issue: JiraIssue): SourceRef {
+/** Test hook: forget cached site URLs. */
+export function clearSiteBaseCache(): void {
+  siteBaseCache.clear();
+}
+
+function toSourceRef(issue: JiraIssue, siteBase: string): SourceRef {
   return {
     kind: 'jira-issue',
     id: issue.key,
-    url: browseUrl(issue),
+    url: `${siteBase}/browse/${issue.key}`,
     title: issue.fields.summary ?? issue.key,
     updatedAt: issue.fields.updated ?? '',
   };
@@ -175,10 +204,12 @@ export async function liveSourceTexts(keys: string[]): Promise<Map<string, { ref
     });
     if (!res.ok) throw new Error(`jira-live-text-${res.status}`);
     const data = (await res.json()) as { issues?: (JiraIssue & { fields: { comment?: { comments?: JiraComment[] } } })[] };
-    for (const issue of data.issues ?? []) {
+    const issues = data.issues ?? [];
+    const siteBase = await siteBaseUrl(issues[0]?.self);
+    for (const issue of issues) {
       const comments = (issue.fields.comment?.comments ?? []).map((c) => adfToText(c.body));
       const text = [issue.fields.summary ?? '', adfToText(issue.fields.description), ...comments].filter((t) => t).join('\n');
-      result.set(`jira-issue:${issue.key}`, { ref: toSourceRef(issue), text });
+      result.set(`jira-issue:${issue.key}`, { ref: toSourceRef(issue, siteBase), text });
     }
   }
   return result;
@@ -222,6 +253,7 @@ export async function searchIncidents(ticket: Ticket, now: Date = new Date()): P
     if (status !== null && m.overlap >= MIN_SYMPTOM_OVERLAP) qualified.push({ issue, status, ...m });
   }
 
+  const siteBase = await siteBaseUrl(qualified[0]?.issue.self);
   return rank(
     qualified.map((c) => ({
       item: c,
@@ -232,7 +264,7 @@ export async function searchIncidents(ticket: Ticket, now: Date = new Date()): P
   )
     .slice(0, MAX_SECTION_CANDIDATES)
     .map(({ item: c }) => ({
-      source: toSourceRef(c.issue),
+      source: toSourceRef(c.issue, siteBase),
       status: c.status,
       summary: excerpt(adfToText(c.issue.fields.description), INCIDENT_EXCERPT_CHARS),
       relevance: c.overlap,
@@ -284,6 +316,7 @@ export async function searchResolutions(ticket: Ticket, now: Date = new Date()):
     .map((c) => ({ ...c, sameRequester: isSameRequester(c.issue), sameSymptom: c.overlap >= MIN_SYMPTOM_OVERLAP }))
     .filter((c) => c.sameSymptom || (c.sameRequester && c.overlap >= MIN_REQUESTER_OVERLAP));
 
+  const siteBase = await siteBaseUrl(qualified[0]?.issue.self);
   return rank(
     qualified.map((c) => {
       const resolvedAt = c.issue.fields.resolutiondate ?? c.issue.fields.updated ?? '';
@@ -292,7 +325,7 @@ export async function searchResolutions(ticket: Ticket, now: Date = new Date()):
   )
     .slice(0, MAX_SECTION_CANDIDATES)
     .map(({ item: c }) => ({
-      source: toSourceRef(c.issue),
+      source: toSourceRef(c.issue, siteBase),
       resolvedAt: c.resolvedAt,
       resolutionText: excerpt(c.resolutionText, RESOLUTION_EXCERPT_CHARS),
       matchReason: c.sameRequester && c.sameSymptom ? 'both' : c.sameRequester ? 'same-requester' : 'same-symptom',

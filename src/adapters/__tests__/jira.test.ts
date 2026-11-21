@@ -33,7 +33,7 @@ vi.mock('@forge/api', () => {
   };
 });
 
-import { getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
+import { clearSiteBaseCache, getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, siteBaseUrl, SOURCE_PROJECTS, visibleIssueKeys } from '../jira';
 
 const comments = fixture.comments as Record<string, unknown>;
 
@@ -62,6 +62,54 @@ const searches = (): Call[] => mock.calls.filter((c) => c.path.startsWith('/rest
 beforeEach(() => {
   mock.calls = [];
   mock.handler = demoSite();
+  clearSiteBaseCache();
+});
+
+describe('siteBaseUrl (browse links)', () => {
+  // What Forge actually returns: requestJira goes through the API gateway (seen on the demo site).
+  const GATEWAY_SELF = 'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3/issue/10001';
+  const serverInfo = (status = 200, json: unknown = { baseUrl: 'https://one-atlas-edlg.atlassian.net' }) => (path: string) =>
+    path === '/rest/api/3/serverInfo' ? { status, json } : { status: 404, json: {} };
+
+  it('uses the self origin when it is already the site', async () => {
+    expect(await siteBaseUrl('https://one-atlas-edlg.atlassian.net/rest/api/3/issue/1')).toBe('https://one-atlas-edlg.atlassian.net');
+    expect(mock.calls).toHaveLength(0);
+  });
+
+  it('asks serverInfo for the site URL when self is the API gateway, once per cloud ID', async () => {
+    mock.handler = serverInfo();
+    expect(await siteBaseUrl(GATEWAY_SELF)).toBe('https://one-atlas-edlg.atlassian.net');
+    expect(await siteBaseUrl(GATEWAY_SELF)).toBe('https://one-atlas-edlg.atlassian.net');
+    expect(mock.calls.map((c) => c.path)).toEqual(['/rest/api/3/serverInfo']);
+    expect(mock.calls[0].as).toBe('app');
+  });
+
+  it('falls back to the self origin when serverInfo fails, and retries next time', async () => {
+    mock.handler = serverInfo(500);
+    expect(await siteBaseUrl(GATEWAY_SELF)).toBe('https://api.atlassian.com');
+    mock.handler = serverInfo(200, {});
+    expect(await siteBaseUrl(GATEWAY_SELF)).toBe('https://api.atlassian.com');
+    mock.handler = serverInfo();
+    expect(await siteBaseUrl(GATEWAY_SELF)).toBe('https://one-atlas-edlg.atlassian.net');
+    expect(mock.calls).toHaveLength(3);
+  });
+
+  it('returns an empty base when there is no issue', async () => {
+    expect(await siteBaseUrl(undefined)).toBe('');
+  });
+
+  it('gives incident links on the site, not on api.atlassian.com', async () => {
+    const gateway = (o: any) => JSON.parse(JSON.stringify(o).replace(/https:\/\/one-atlas-edlg\.atlassian\.net\/rest/g, 'https://api.atlassian.com/ex/jira/cloud-1/rest'));
+    mock.handler = (path, body) => {
+      if (path === '/rest/api/3/serverInfo') return { status: 200, json: { baseUrl: 'https://one-atlas-edlg.atlassian.net' } };
+      const res = demoSite()(path, body) as { status: number; json: unknown };
+      return { status: res.status, json: gateway(res.json) };
+    };
+    const incidents = await searchIncidents(await getTicket('ITS-6265'));
+    expect(incidents.find((i) => i.source.id === 'ITO-9647')!.source.url).toBe('https://one-atlas-edlg.atlassian.net/browse/ITO-9647');
+    const resolutions = await searchResolutions(await getTicket('ITS-6265'));
+    expect(resolutions.find((r) => r.source.id === 'ITO-9642')!.source.url).toBe('https://one-atlas-edlg.atlassian.net/browse/ITO-9642');
+  });
 });
 
 describe('getTicket', () => {
