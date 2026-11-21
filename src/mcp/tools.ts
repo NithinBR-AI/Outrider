@@ -5,14 +5,16 @@
 //    cannot see the ticket, or a failed check, gets the same "not accessible" response a nonexistent
 //    ticket gets: no build is queued, no pending response, nothing about whether a bundle exists.
 // 2. If no bundle exists: queue a build (unless one is already in flight) and return PendingContext.
-// 3. If a bundle exists: return it filtered for this caller, exactly like the panel (§16.2, §16.4).
+// 3. If a bundle exists: return it filtered for this caller, exactly like the panel (§16.2, §16.4),
+//    including the summary verified for this caller against live source text (§13.6).
 //
 // Caller identity is verified on the demo site (6c-3): Rovo/MCP invocations carry the caller in
 // context.principal.accountId, and asUser() inside the action runs with that caller's permissions.
 import { visibleIssueKeys } from '../adapters/jira';
 import { getBundle, getStatus } from '../adapters/storage';
-import { bundleSourceKeys, filterBundleForViewer } from '../domain/authorize';
-import { ContextBundle, PendingContext } from '../domain/types';
+import { bundleSourceKeys } from '../domain/authorize';
+import { PendingContext, ViewerBundle } from '../domain/types';
+import { viewerBundle } from '../resolvers/viewerContext';
 import { enqueueTicketBuild } from '../pipeline/enqueue';
 
 /** Returned when the caller may not see the ticket, or it does not exist. The two are indistinguishable. */
@@ -28,14 +30,40 @@ export type TicketNotAccessible = {
  * left out. builtAt stays so the agent can cite freshness; partial and failures stay so it can say when
  * sources were unavailable. The stored bundle and the panel response are unchanged.
  */
-export type McpContextBundle = Omit<ContextBundle, 'buildId' | 'ticketFingerprint'>;
+// Notes for AI agents. An agent describes whatever it receives, and once described a claim the verifier
+// rejected as "mentioned in some notes". These notes make the meaning of each list impossible to miss.
+export const CLAIMS_NOTE =
+  'Each claim shares a verbatim span with its cited source (see span and source). This is a text match, not proof that the claim is true.';
+export const UNSUPPORTED_CLAIM_NOTE =
+  'Generated claim with no matching text in its cited source. It is not supported by any source; do not present it as a fact or as something a source mentions.';
+
+/** The verified summary as MCP callers receive it. */
+export type McpSummary = {
+  claimsNote: string;
+  claims: NonNullable<ViewerBundle['summary']>['claims'];
+  // The panel calls these "rejected". For agents they are named and annotated as unsupported, so they
+  // cannot be mistaken for disputed or partially sourced information.
+  unsupportedClaims: { text: string; reason: 'no-matching-span'; note: string }[];
+  origin?: NonNullable<ViewerBundle['summary']>['origin'];
+};
+
+export type McpContextBundle = Omit<ViewerBundle, 'buildId' | 'ticketFingerprint' | 'summary'> & { summary?: McpSummary };
 
 export type GetTicketContextResult = McpContextBundle | PendingContext | TicketNotAccessible;
 
-/** Removes internal bookkeeping fields from a viewer-filtered bundle. */
-export function toMcpBundle(bundle: ContextBundle): McpContextBundle {
-  const { buildId: _buildId, ticketFingerprint: _fingerprint, ...rest } = bundle;
-  return rest;
+/** Removes internal bookkeeping fields and annotates the verified summary for agents. */
+export function toMcpBundle(bundle: ViewerBundle): McpContextBundle {
+  const { buildId: _buildId, ticketFingerprint: _fingerprint, summary, ...rest } = bundle;
+  if (!summary) return rest;
+  return {
+    ...rest,
+    summary: {
+      claimsNote: CLAIMS_NOTE,
+      claims: summary.claims,
+      unsupportedClaims: summary.rejected.map((r) => ({ text: r.text, reason: r.reason, note: UNSUPPORTED_CLAIM_NOTE })),
+      origin: summary.origin,
+    },
+  };
 }
 
 export const NOT_ACCESSIBLE_MESSAGE = 'The ticket was not found or you do not have access to it.';
@@ -74,5 +102,5 @@ export async function getTicketContext(ticketKey: string, callerAccountId: strin
     console.error(`MCP source visibility check failed for ${ticketKey}`, err);
     visible = null;
   }
-  return toMcpBundle(filterBundleForViewer(stored, visible));
+  return toMcpBundle(await viewerBundle(stored, visible));
 }

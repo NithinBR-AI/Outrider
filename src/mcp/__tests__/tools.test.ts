@@ -13,7 +13,7 @@ vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys }))
 vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
 vi.mock('../../pipeline/enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
 
-import { getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE } from '../tools';
+import { CLAIMS_NOTE, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
 import { AUTH_JIRA_CHECK_FAILED } from '../../domain/authorize';
 
 const ref = (id: string) => ({ kind: 'jira-issue' as const, id, url: `https://x/browse/${id}`, title: id, updatedAt: 'u' });
@@ -119,6 +119,24 @@ describe('bundle exists', () => {
     h.getBundle.mockResolvedValue(undefined);
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
     expect(await getTicketContext('ITS-1', 'caller')).toHaveProperty('buildId', 'b-new');
+  });
+
+  it('annotates the verified summary for agents and renames rejected to unsupportedClaims', async () => {
+    h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITO-1', 'ITS-2'));
+    const viewer = { ...bundle, summary: { claims: [{ text: 'c', source: ref('ITO-1'), span: 's', grounded: true }], rejected: [{ text: 'made up', reason: 'no-matching-span' as const }], origin: 'demo-fixture' as const } };
+    const out = toMcpBundle(viewer);
+    expect(out.summary).toEqual({
+      claimsNote: CLAIMS_NOTE,
+      claims: viewer.summary.claims,
+      unsupportedClaims: [{ text: 'made up', reason: 'no-matching-span', note: UNSUPPORTED_CLAIM_NOTE }],
+      origin: 'demo-fixture',
+    });
+    expect(out).not.toHaveProperty('buildId');
+  });
+
+  it('leaves the summary out when the viewer has none', () => {
+    const { summary: _none, ...withoutSummary } = bundle;
+    expect(toMcpBundle(withoutSummary)).not.toHaveProperty('summary');
   });
 
   it('never returns the stored object itself', async () => {

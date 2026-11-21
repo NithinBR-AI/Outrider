@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import { BuildJob, ContextBundle } from '../domain/types';
 import { ticketFingerprint } from '../domain/extract';
 import { limitCandidates } from '../domain/score';
+import { demoSummaryFor } from '../domain/demoSummary';
 import * as jira from '../adapters/jira';
 import { acquireLock, getStatus, holdsLock, putBundle, releaseLock, updateStatusIf } from '../adapters/storage';
 import { enqueueTicketBuild, requeueTicketJob } from './enqueue';
@@ -124,6 +125,10 @@ async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
     partial: failures.length > 0,
     failures,
   };
+  // Generated claims. Until LLM generation exists (step 8c), only the demo ticket has a canned summary
+  // (spec §13.6). Claims are stored unverified; every read verifies them for that viewer.
+  const summary = demoSummaryFor(ticketKey);
+  if (summary) bundle.summary = summary;
   await putBundle(bundle);
   await updateStatusIf(ticketKey, buildId, ['building'], { status: 'complete' });
   console.log(`built ${ticketKey}: ${keptIncidents.length} incidents, ${keptResolutions.length} resolutions, failures=[${failures.join(',')}]`);

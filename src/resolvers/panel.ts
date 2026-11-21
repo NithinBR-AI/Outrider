@@ -11,15 +11,16 @@
 import Resolver from '@forge/resolver';
 import { getBundle, getStatus } from '../adapters/storage';
 import { visibleIssueKeys } from '../adapters/jira';
-import { BuildStatus, ContextBundle } from '../domain/types';
+import { BuildStatus, ViewerBundle } from '../domain/types';
 import { MAX_DISPLAY_ITEMS_PER_SECTION } from '../domain/score';
-import { bundleSourceKeys, filterBundleForViewer } from '../domain/authorize';
+import { bundleSourceKeys } from '../domain/authorize';
+import { viewerBundle } from './viewerContext';
 
 export type PanelState =
   | { state: 'no-bundle' }
   | { state: 'unavailable' }
-  | { state: 'queued' | 'building' | 'failed' | 'superseded'; bundle?: ContextBundle }
-  | { state: 'complete'; bundle: ContextBundle };
+  | { state: 'queued' | 'building' | 'failed' | 'superseded'; bundle?: ViewerBundle }
+  | { state: 'complete'; bundle: ViewerBundle };
 
 const resolver = new Resolver();
 
@@ -45,7 +46,7 @@ export async function getPanelContext(ticketKey: string): Promise<PanelState> {
   // Ticket-level gate (§16.1, security test #2). A failed check counts as no access (§16.5).
   if (visible === null || !visible.has(ticketKey)) return { state: 'unavailable' };
 
-  const bundle = stored ? forDisplay(filterBundleForViewer(stored, visible)) : undefined;
+  const bundle = stored ? forDisplay(await viewerBundle(stored, visible)) : undefined;
   return toPanelState(status, bundle);
 }
 
@@ -53,7 +54,7 @@ export async function getPanelContext(ticketKey: string): Promise<PanelState> {
  * Applies the display limit (§3.2: at most five items per section). The stored bundle keeps up to
  * MAX_BUNDLE_CANDIDATES items; the panel shows the top of each section, already in ranked order.
  */
-export function forDisplay(bundle: ContextBundle): ContextBundle {
+export function forDisplay(bundle: ViewerBundle): ViewerBundle {
   const top = <T>(items: T[] | undefined) => (items ?? []).slice(0, MAX_DISPLAY_ITEMS_PER_SECTION);
   return {
     ...bundle,
@@ -65,7 +66,7 @@ export function forDisplay(bundle: ContextBundle): ContextBundle {
 }
 
 /** Maps the stored build status and the viewer's bundle to what the panel shows (spec §17.1). Exported for tests. */
-export function toPanelState(status: BuildStatus | undefined, bundle: ContextBundle | undefined): PanelState {
+export function toPanelState(status: BuildStatus | undefined, bundle: ViewerBundle | undefined): PanelState {
   switch (status?.status) {
     case 'queued':
     case 'building':

@@ -60,6 +60,9 @@ export type GeneratedClaim = {
 
 export type PersistedSummary = {
   generatedClaims: GeneratedClaim[];
+  // Where the claims came from. 'demo-fixture' is the canned summary spec §13.6 requires for the demo;
+  // the narration and write-up must say when a fixture is shown. 'llm' arrives with step 8c.
+  origin?: 'demo-fixture' | 'llm';
 };
 
 export type ContextBundle = {
@@ -93,6 +96,15 @@ export type Ticket = {
   serviceIds: string[];
   status: string;
   updatedAt: string;
+};
+
+/**
+ * A bundle as one viewer receives it (spec §16.4): sources filtered for that viewer and, instead of the
+ * stored generated claims, the summary as verified for that viewer at read time (§13.6). The stored
+ * ContextBundle is never sent to a viewer.
+ */
+export type ViewerBundle = Omit<ContextBundle, 'summary'> & {
+  summary?: SummaryResponse & { origin?: PersistedSummary['origin'] };
 };
 
 export type ActorContext = {

@@ -247,6 +247,23 @@ describe('per-ticket lock and write guards (spec §8.5, §8.6)', () => {
   });
 });
 
+describe('canned demo summary (spec §13.6)', () => {
+  it('is stored, unverified, on the demo ticket bundle only', async () => {
+    h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'build-a', requestedAt: 'r', status: 'queued', actor: { source: 'jira-event' } });
+    h.getTicket.mockResolvedValue({ ...ticket, key: 'ITS-6265' });
+    await buildTicketBundle({ ...job(), ticketKey: 'ITS-6265' });
+    const demo = h.store.get('bundle:ITS-6265') as ContextBundle;
+    expect(demo.summary?.origin).toBe('demo-fixture');
+    expect(demo.summary?.generatedClaims.length).toBeGreaterThan(0);
+  });
+
+  it('is not attached to any other ticket', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(bundle()!.summary).toBeUndefined();
+  });
+});
+
 describe('fingerprint and supersession (spec §8.2, §8.4)', () => {
   it('stores the fingerprint of the ticket the bundle was built from', async () => {
     setStatus({});

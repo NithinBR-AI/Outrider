@@ -29,7 +29,9 @@ Built on Atlassian Forge for Codegeist 2026.
 | 6c-2 | Read-time authorization in the panel, verified with two users on the demo site | ✅ (development) |
 | 6c-3 | MCP caller identity and authorization gate for `get-ticket-context`, verified with two users via Rovo | ✅ (development) |
 | 7 | Source-span verifier (tested against real demo-site text; used by the summary in step 8) | ✅ |
-| 8–14 | AI summary with rejected-claim counter, remaining MCP tools, Confluence, TWG, demo | 🔜 |
+| 8a | Verified summary on the read path (panel and MCP), canned demo summary, verifier-rejection acceptance test | ✅ (development) |
+| 8b–8c | Summary and rejected-claim counter in the panel; LLM summary generation | 🔜 |
+| 9–14 | Remaining MCP tools, per-site configuration, Confluence, TWG, demo | 🔜 |
 
 ## Install
 
@@ -62,10 +64,12 @@ minute or two for the Jira event, then press **Refresh** at the top of the panel
 2. Click the agent selector dropdown → **Create agent** → **Start from blank**
 3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context (development)** → **Add**
 4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6265`
-5. The agent answers with the related active incident (ITO-9647) and past resolution (ITO-9642)
+5. The agent answers with the related active incident (ITO-9647), the past resolution (ITO-9642) and the
+   source-matched summary claims; the deliberately unsupported demo claim comes back as unsupported
 
 The tool returns the same context as the panel, filtered for whoever is asking: incidents and resolutions with
-source links and freshness (`builtAt`). Internal build fields are left out. For a ticket with no context yet it
+source links and freshness (`builtAt`), plus the verified summary (see [Evidence-gated summary](#evidence-gated-summary)).
+Internal build fields are left out. For a ticket with no context yet it
 answers "being prepared" and queues a build; ask again a minute later. A ticket the caller cannot see, or one that
 does not exist, gets the same "not found or no access" answer.
 
@@ -112,6 +116,22 @@ forge install --upgrade -p Jira -s <your-site>.atlassian.net -e development
 forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e development
 ```
 
+## Evidence-gated summary
+
+- A summary is a list of generated claims, each citing one source. Claims are stored unverified and checked on
+  every read, for that viewer, against the cited source's **current** text fetched as the viewer.
+- A claim is shown only if it shares a verbatim span with its cited source: at least 12 characters and two
+  distinctive words, so stock phrases like "the user cannot" never count. Matching ignores case, spacing,
+  Markdown and typographic quotes. This proves a text match, not that the claim is true.
+- A claim with no matching span is rejected and counted, with the reason "no matching source span".
+- A claim with no citation, or citing a source the viewer cannot see, is left out entirely: not shown, not
+  counted, so nothing reveals it existed. If no claim survives, there is no summary at all.
+- Through MCP, rejected claims are returned as `unsupportedClaims`, each with a note telling the agent the claim is
+  not supported by any source.
+- **Demo:** until LLM generation is added (step 8c), ITS-6265 carries a canned summary marked as a demo fixture, with
+  one deliberately unsupported claim. The fixture fixes the claims, not the outcome: the verifier runs live on
+  every read.
+
 ## How context is chosen
 
 - **Retrieval:** incidents (open, or resolved in the last 30 days) and resolved tickets (last 365 days) are pulled
@@ -153,7 +173,7 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 - Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
 - Integration suites in `tests/integration/` run the real pipeline, storage and panel code with Jira and KVS
   simulated: concurrent builds for one ticket, revoked access after a build, read authorization across viewers,
-  and MCP caller authorization.
+  MCP caller authorization, and verifier rejection (the canned demo summary checked against real demo-site text).
 - Builds for the same ticket are serialized with a per-ticket lock (atomic create-if-absent in Forge KVS, with
   lease expiry) plus write guards. This is best-effort, not strict mutual exclusion; the concurrency tests show
   the newer context wins in the tested interleavings.

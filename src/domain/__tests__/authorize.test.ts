@@ -1,6 +1,6 @@
 // Read-time filtering tests (spec §16.4, §16.5).
 import { describe, expect, it } from 'vitest';
-import { AUTH_JIRA_CHECK_FAILED, bundleSourceKeys, filterBundleForViewer } from '../authorize';
+import { AUTH_JIRA_CHECK_FAILED, bundleSourceKeys, citedJiraKeys, filterBundleForViewer, withVerifiedSummary } from '../authorize';
 import { ContextBundle, Incident, Resolution } from '../types';
 
 const ref = (id: string, kind: 'jira-issue' | 'confluence-page' = 'jira-issue') => ({ kind, id, url: `https://x/${id}`, title: id, updatedAt: 'u' });
@@ -109,5 +109,80 @@ describe('filterBundleForViewer', () => {
     const out = filterBundleForViewer({ ticketKey: 'ITS-1', builtAt: 't', buildId: 'b', ticketFingerprint: '' } as ContextBundle, new Set(['ITS-1']));
     expect(out.incidents).toEqual([]);
     expect(out.failures).toEqual([]);
+  });
+});
+
+describe('citedJiraKeys', () => {
+  it('lists the Jira keys a summary cites, once each, skipping uncited and non-Jira claims', () => {
+    const summary = {
+      generatedClaims: [
+        { claimId: 'a', text: 'a', citedSourceRef: ref('ITO-1') },
+        { claimId: 'b', text: 'b', citedSourceRef: ref('ITO-1') },
+        { claimId: 'c', text: 'c', citedSourceRef: null },
+        { claimId: 'd', text: 'd', citedSourceRef: ref('4194312', 'confluence-page') },
+      ],
+    };
+    expect(citedJiraKeys(summary)).toEqual(['ITO-1']);
+    expect(citedJiraKeys(undefined)).toEqual([]);
+  });
+});
+
+describe('withVerifiedSummary', () => {
+  const viewer = () => filterBundleForViewer(stored({ incidents: [], resolutions: [] }), new Set(['ITS-1']));
+  const summary = (origin?: 'demo-fixture' | 'llm') => ({
+    origin,
+    generatedClaims: [
+      { claimId: '1', text: 'We renewed certificate via Let\'s Encrypt', citedSourceRef: ref('ITO-1') },
+      { claimId: '2', text: 'A made up claim about payments', citedSourceRef: ref('ITO-1') },
+    ],
+  });
+  const live = new Map([['jira-issue:ITO-1', { ref: ref('ITO-1'), text: 'Root cause: we renewed certificate via Let\'s Encrypt.' }]]);
+
+  it('attaches the verified claims and rejections, with the origin', () => {
+    const out = withVerifiedSummary(viewer(), summary('demo-fixture'), live);
+    expect(out.summary!.claims.map((c) => c.text)).toEqual(['We renewed certificate via Let\'s Encrypt']);
+    expect(out.summary!.rejected).toEqual([{ text: 'A made up claim about payments', reason: 'no-matching-span' }]);
+    expect(out.summary!.origin).toBe('demo-fixture');
+    expect(out.partial).toBe(false);
+  });
+
+  it('attaches nothing when there is no stored summary or it has no claims', () => {
+    expect(withVerifiedSummary(viewer(), undefined, live).summary).toBeUndefined();
+    expect(withVerifiedSummary(viewer(), { generatedClaims: [] }, live).summary).toBeUndefined();
+    // A stored summary missing its claims entirely (for example, written by an older version).
+    expect(withVerifiedSummary(viewer(), {} as { generatedClaims: [] }, live).summary).toBeUndefined();
+  });
+
+  it('omits the summary entirely when no claim survives, even if some were rejected', () => {
+    const out = withVerifiedSummary(viewer(), summary(), new Map([['jira-issue:ITO-1', { ref: ref('ITO-1'), text: 'unrelated text' }]]));
+    expect(out).not.toHaveProperty('summary');
+  });
+
+  it('omits the summary when the viewer cannot see any cited source', () => {
+    expect(withVerifiedSummary(viewer(), summary(), new Map())).not.toHaveProperty('summary');
+  });
+
+  it('shows no claims and marks the response partial when the live fetch failed', () => {
+    const out = withVerifiedSummary(viewer(), summary(), null);
+    expect(out).not.toHaveProperty('summary');
+    expect(out.partial).toBe(true);
+    expect(out.failures).toEqual([AUTH_JIRA_CHECK_FAILED]);
+  });
+
+  it('does not record the failure twice', () => {
+    const v = filterBundleForViewer(stored(), null); // already has the failure from the source check
+    expect(withVerifiedSummary(v, summary(), null).failures).toEqual([AUTH_JIRA_CHECK_FAILED]);
+  });
+
+  it('does not mark a failed fetch when nothing needed fetching', () => {
+    const uncited = { generatedClaims: [{ claimId: 'x', text: 'x', citedSourceRef: null }] };
+    const out = withVerifiedSummary(viewer(), uncited, null);
+    expect(out.partial).toBe(false);
+    expect(out).not.toHaveProperty('summary');
+  });
+
+  it('never carries a summary over from its input', () => {
+    const withStale = { ...viewer(), summary: { claims: [], rejected: [] } };
+    expect(withVerifiedSummary(withStale, undefined, live)).not.toHaveProperty('summary');
   });
 });

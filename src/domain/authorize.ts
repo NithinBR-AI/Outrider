@@ -8,9 +8,11 @@
 // - If the visibility check itself failed, every Jira source is dropped, the response is marked
 //   partial and records auth:jira-check-failed. "Could not verify" means "not authorized" (§16.5).
 // - Sections without a read-time check yet (Confluence articles: step 10; Teamwork Graph services:
-//   step 11) and the summary (steps 7-8) are never served unchecked, so they are dropped here until
-//   their checks exist. They are empty in every bundle built so far.
-import { ContextBundle } from './types';
+//   step 11) are never served unchecked, so they are dropped here until their checks exist.
+// - The stored summary (generated claims) is never copied over. withVerifiedSummary attaches the
+//   summary as verified for this viewer instead (§13.6).
+import { ContextBundle, PersistedSummary, ViewerBundle } from './types';
+import { citedSources, LiveSource, verifyClaims } from './verify';
 
 export const AUTH_JIRA_CHECK_FAILED = 'auth:jira-check-failed';
 
@@ -29,12 +31,12 @@ export function bundleSourceKeys(bundle: ContextBundle): string[] {
  * Builds the viewer's copy of a bundle. `visible` is the set of issue keys the viewer can see, or
  * null if the check failed. Always returns a new object; the stored bundle is never returned as is.
  */
-export function filterBundleForViewer(bundle: ContextBundle, visible: Set<string> | null): ContextBundle {
+export function filterBundleForViewer(bundle: ContextBundle, visible: Set<string> | null): ViewerBundle {
   const canSee = (kind: string, id: string) => visible !== null && kind === 'jira-issue' && visible.has(id);
   const failures = [...(bundle.failures ?? [])];
   if (visible === null && bundleSourceKeys(bundle).length > 0) failures.push(AUTH_JIRA_CHECK_FAILED);
 
-  const filtered: ContextBundle = {
+  const filtered: ViewerBundle = {
     ticketKey: bundle.ticketKey,
     builtAt: bundle.builtAt,
     buildId: bundle.buildId,
@@ -47,4 +49,31 @@ export function filterBundleForViewer(bundle: ContextBundle, visible: Set<string
     failures,
   };
   return filtered;
+}
+
+/** The Jira issue keys a stored summary cites, for the live-text fetch. Non-Jira citations are left out. */
+export function citedJiraKeys(summary: PersistedSummary | undefined): string[] {
+  return citedSources(summary?.generatedClaims ?? []).filter((s) => s.kind === 'jira-issue').map((s) => s.id);
+}
+
+/**
+ * Attaches the summary as verified for this viewer (spec §13.2, §13.3, §13.6). `live` holds the cited
+ * sources the viewer may see, with their current text, or null if that fetch failed.
+ * - No stored summary: nothing is attached.
+ * - Live fetch failed: no claim can be verified, so none is shown; the response is marked partial with
+ *   auth:jira-check-failed ("could not verify" means "not shown", §16.5).
+ * - Otherwise the claims are verified. If no claim survives, the summary is omitted entirely, including
+ *   its rejected list: an empty summary is never shown (§13.3, §17.3).
+ */
+export function withVerifiedSummary(viewer: ViewerBundle, summary: PersistedSummary | undefined, live: Map<string, LiveSource> | null): ViewerBundle {
+  const { summary: _ignored, ...rest } = viewer;
+  if (!summary || (summary.generatedClaims ?? []).length === 0) return rest;
+  if (live === null) {
+    if (citedJiraKeys(summary).length === 0) return rest;
+    const failures = rest.failures.includes(AUTH_JIRA_CHECK_FAILED) ? rest.failures : [...rest.failures, AUTH_JIRA_CHECK_FAILED];
+    return { ...rest, failures, partial: true };
+  }
+  const verified = verifyClaims(summary.generatedClaims, live);
+  if (verified.claims.length === 0) return rest;
+  return { ...rest, summary: { ...verified, origin: summary.origin } };
 }
