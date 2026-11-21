@@ -27,7 +27,7 @@ Built on Atlassian Forge for Codegeist 2026.
 | 6b | Deterministic ranking, ticket fingerprint, stale-build supersession, candidate limits, relevance indicator | ✅ (development) |
 | 6c-1 | Per-ticket lock, write guards, concurrency test | ✅ (development) |
 | 6c-2 | Read-time authorization in the panel, verified with two users on the demo site | ✅ (development) |
-| 6c-3 | MCP caller identity and authorization gate for `get-ticket-context` | 🔜 |
+| 6c-3 | MCP caller identity and authorization gate for `get-ticket-context`, verified with two users via Rovo | ✅ (development) |
 | 7–14 | Verifier, AI summary, remaining MCP tools, Confluence, TWG, demo | 🔜 |
 
 ## Install
@@ -61,9 +61,12 @@ minute or two for the Jira event, then press **Refresh** at the top of the panel
 2. Click the agent selector dropdown → **Create agent** → **Start from blank**
 3. Click **+ Add tools** → select **outrider** from Connected apps → select **Get ticket context (development)** → **Add**
 4. Click **Test** (top-right) and send: `Use the get-ticket-context tool with ticketKey ITS-6265`
-5. The tool returns a `ContextBundle` with `ticketKey`, `builtAt`, and source arrays
+5. The agent answers with the related active incident (ITO-9647) and past resolution (ITO-9642)
 
-> **Note:** The MCP tool still returns a stub bundle (empty source arrays). The panel already serves real, per-viewer filtered context; the MCP tool gets the same in step 6c-3.
+The tool returns the same context as the panel, filtered for whoever is asking: incidents and resolutions with
+source links and freshness (`builtAt`). Internal build fields are left out. For a ticket with no context yet it
+answers "being prepared" and queues a build; ask again a minute later. A ticket the caller cannot see, or one that
+does not exist, gets the same "not found or no access" answer.
 
 ### View runtime logs
 
@@ -136,6 +139,10 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
   the viewer cannot see into looks the same as an empty one.
 - **Check fails:** nothing is shown. A failed permission check is treated as "not authorized".
 - **Revoked access** takes effect on the next read; the stored context does not need to be rebuilt.
+- **MCP tool:** the caller is taken from the Rovo invocation context (`principal.accountId`), never from the tool
+  inputs, and the ticket is checked as that caller before anything else: no build is queued and nothing is revealed
+  for a ticket the caller cannot see. Results then go through the same viewer filter as the panel. Verified via Rovo
+  with the same two users: one received the ITO incident and fix for ITS-6265, the other received none.
 - Verified on the demo site with two real users: an agent with ITS and ITO access sees the related ITO incident
   and fix on ITS-6265; an ITS-only agent sees empty sections. Granting and then revoking ITO access for the
   second user made the items appear and disappear on Refresh, with the same stored context.
@@ -144,7 +151,8 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 
 - Unit tests live next to the code in `src/**/__tests__/`. Recorded fixtures and integration tests live in `tests/`.
 - Integration suites in `tests/integration/` run the real pipeline, storage and panel code with Jira and KVS
-  simulated: concurrent builds for one ticket, revoked access after a build, and read authorization across viewers.
+  simulated: concurrent builds for one ticket, revoked access after a build, read authorization across viewers,
+  and MCP caller authorization.
 - Builds for the same ticket are serialized with a per-ticket lock (atomic create-if-absent in Forge KVS, with
   lease expiry) plus write guards. This is best-effort, not strict mutual exclusion; the concurrency tests show
   the newer context wins in the tested interleavings.

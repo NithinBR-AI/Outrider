@@ -24,7 +24,7 @@ modules:
       inputs:
         ticketKey:
           title: Ticket key
-          description: The Jira issue key, e.g. OD-1.
+          description: The Jira issue key, e.g. ITS-123.
           type: string
           required: true
 
