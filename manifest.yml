@@ -128,6 +128,9 @@ permissions:
     - search:confluence
     # Step 10: batch page fetch by ID, as the viewer (GET /wiki/api/v2/pages): read-time check and live text.
     - read:page:confluence
+    # Step 11: Teamwork Graph, as the viewer only (atlassianTeamsBySpace): JiraSpace and AtlassianTeam object types.
+    - read:graph:project:jira
+    - read:graph:team:atlassian
     - storage:app
   # Summary generation: Amazon Bedrock via Mantle (spec §12.6), declared in remotes below.
   external:

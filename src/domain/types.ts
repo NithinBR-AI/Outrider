@@ -1,5 +1,6 @@
 // Core domain types for Outrider
 // Source of truth: docs/spec.md §7
+import type { TeamLink } from './teams';
 
 export type SourceRef = {
   kind: 'jira-issue' | 'confluence-page';
@@ -109,6 +110,9 @@ export type Ticket = {
  */
 export type ViewerBundle = Omit<ContextBundle, 'summary'> & {
   summary?: SummaryResponse & { origin?: PersistedSummary['origin'] };
+  // Step 11: teams linked to the projects of the related incidents this viewer can see. Looked up at read
+  // time as the viewer (Teamwork Graph), never stored in the ContextBundle.
+  teams?: TeamLink[];
 };
 
 export type ActorContext = {

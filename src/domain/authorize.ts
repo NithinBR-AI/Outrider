@@ -9,7 +9,8 @@
 //   partial and records auth:jira-check-failed. "Could not verify" means "not authorized" (§16.5).
 // - Confluence articles are kept only if the viewer can see that page right now (one batch page fetch as the
 //   viewer, step 10). A failed check drops every article and records auth:confluence-check-failed.
-// - Teamwork Graph services have no read-time check yet (step 11), so they are never served.
+// - Stored ServiceLinks have no read-time check, so they are never served. Step 11 teams are not stored at
+//   all: they are looked up as the viewer at read time (resolvers/viewerContext.ts, domain/teams.ts).
 // - The stored summary (generated claims) is never copied over. withVerifiedSummary attaches the
 //   summary as verified for this viewer instead (§13.6).
 import { ContextBundle, PersistedSummary, ViewerBundle } from './types';

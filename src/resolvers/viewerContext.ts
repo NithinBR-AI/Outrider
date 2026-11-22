@@ -3,8 +3,11 @@
 import { liveSourceTexts } from '../adapters/jira';
 import { liveArticleTexts } from '../adapters/confluence';
 import { AUTH_CONFLUENCE_CHECK_FAILED, bundlePageIds, citedJiraKeys, filterBundleForViewer, withFailure, withVerifiedSummary } from '../domain/authorize';
+import { teamsForProjects } from '../adapters/twg';
 import { ContextBundle, ViewerBundle } from '../domain/types';
 import { LiveSource } from '../domain/verify';
+import { incidentProjects, mergeTeams, TWG_UNAVAILABLE } from '../domain/teams';
+import { MAX_DISPLAY_ITEMS_PER_SECTION } from '../domain/score';
 
 /**
  * Sources filtered for the viewer, and the stored summary verified against the cited sources' live text,
@@ -42,5 +45,22 @@ export async function viewerBundle(stored: ContextBundle, visible: Set<string> |
     }
   }
   const live = jira === null ? null : new Map([...jira, ...(pages ?? new Map())]);
-  return withVerifiedSummary(filtered, stored.summary, live);
+  return withTeams(withVerifiedSummary(filtered, stored.summary, live));
+}
+
+/**
+ * Adds the teams involved (step 11): teams linked to the projects of the related incidents the viewer can
+ * see, among those the panel shows. Looked up as the viewer at read time; no incidents means no call. A
+ * failed or timed-out lookup drops all teams and records twg:unavailable; nothing else changes.
+ */
+async function withTeams(viewer: ViewerBundle): Promise<ViewerBundle> {
+  const projects = incidentProjects(viewer.incidents.slice(0, MAX_DISPLAY_ITEMS_PER_SECTION));
+  if (projects.length === 0) return { ...viewer, teams: [] };
+  try {
+    const byProject = await teamsForProjects(projects.map((p) => p.projectKey));
+    return { ...viewer, teams: mergeTeams(projects.map((p) => ({ ...p, teams: byProject.get(p.projectKey) ?? [] }))) };
+  } catch (err) {
+    console.error(`Teamwork Graph team lookup failed for ${viewer.ticketKey}: ${(err as Error).message}`);
+    return { ...withFailure(viewer, TWG_UNAVAILABLE), teams: [] };
+  }
 }

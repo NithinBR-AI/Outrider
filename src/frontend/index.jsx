@@ -51,6 +51,24 @@ const IncidentItem = ({ incident }) => (
   </Box>
 );
 
+// A team linked (in Atlassian Teams) to the project of a related incident, from Teamwork Graph at read time.
+// The evidence line says which project and incident connect it, so it never reads as an owner the app guessed.
+const TeamItem = ({ team }) => (
+  <Box paddingBlock="space.100">
+    <Stack space="space.050">
+      {team.url ? <Link href={team.url} openNewTab>{team.name}</Link> : <Text><Strong>{team.name}</Strong></Text>}
+      <Text size="small" color="color.text.subtlest">{team.evidence}</Text>
+    </Stack>
+  </Box>
+);
+
+// Must match TWG_UNAVAILABLE in src/domain/teams.ts.
+const TWG_UNAVAILABLE = 'twg:unavailable';
+const NO_TEAMS = "No teams linked to this project's space. Link a team to the project in Atlassian Teams to see it here.";
+const TEAMS_UNAVAILABLE = "Teams couldn't be checked right now.";
+// Teams are looked up only from related incidents; with none, there is nothing to look up.
+const NO_INCIDENTS_FOR_TEAMS = 'No related incidents to look up teams for.';
+
 const ARTICLE_KIND_LABEL = { runbook: 'Runbook', policy: 'Policy', guide: 'Guide' };
 
 const ArticleItem = ({ article }) => (
@@ -148,7 +166,7 @@ const Summary = ({ summary }) => {
 // Empty sections stay visible so the viewer can see the section was evaluated (spec §17.2).
 // Each section with items has its own Show less / Show more toggle. Sections start expanded: the panel exists to
 // surface context, so the viewer collapses what they don't need. There is no "collapse all".
-const Section = ({ title, items, render }) => {
+const Section = ({ title, items, render, empty = 'No items' }) => {
   const [open, setOpen] = useState(true);
   return (
     <Stack space="space.050">
@@ -160,7 +178,7 @@ const Section = ({ title, items, render }) => {
           </Button>
         ) : null}
       </Inline>
-      {items.length === 0 ? <Text color="color.text.subtlest">No items</Text> : open ? items.map(render) : null}
+      {items.length === 0 ? <Text color="color.text.subtlest">{empty}</Text> : open ? items.map(render) : null}
     </Stack>
   );
 };
@@ -173,6 +191,8 @@ const Bundle = ({ bundle }) => (
     {/* No summary means none survived verification for this viewer: nothing is rendered (spec §17.3). */}
     {bundle.summary && bundle.summary.claims && bundle.summary.claims.length > 0 ? <Summary summary={bundle.summary} /> : null}
     <Section title="Active and recent incidents" items={bundle.incidents} render={(i) => <IncidentItem key={i.source.id} incident={i} />} />
+    <Section title="Teams involved" items={bundle.teams ?? []} render={(t) => <TeamItem key={t.teamId} team={t} />}
+      empty={(bundle.failures ?? []).includes(TWG_UNAVAILABLE) ? TEAMS_UNAVAILABLE : (bundle.incidents ?? []).length === 0 ? NO_INCIDENTS_FOR_TEAMS : NO_TEAMS} />
     <Section title="Past resolutions" items={bundle.resolutions} render={(r) => <ResolutionItem key={r.source.id} resolution={r} />} />
     <Section title="Knowledge articles" items={bundle.articles ?? []} render={(a) => <ArticleItem key={a.source.id} article={a} />} />
   </Stack>

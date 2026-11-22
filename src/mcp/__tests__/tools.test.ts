@@ -15,12 +15,14 @@ const h = vi.hoisted(() => ({
 }));
 // Explicit site settings (Phase 5.5), as on the demo site.
 const SETTINGS = { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' };
+// Teamwork Graph (step 11): no linked teams unless a test says otherwise; tests/integration/teams-authorization.test.ts covers teams.
+vi.mock('../../adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => new Map(keys.map((key) => [key, []])) }));
 vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys, getTicket: h.getTicket, searchIncidents: h.searchIncidents, searchResolutions: h.searchResolutions }));
 vi.mock('../../adapters/settings', () => ({ getSettings: h.getSettings }));
 vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
 vi.mock('../../pipeline/enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
 
-import { CLAIMS_NOTE, findRelatedIncidents, findSimilarResolutions, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
+import { CLAIMS_NOTE, findRelatedIncidents, findSimilarResolutions, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, TEAMS_NOTE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
 import { MAX_TOOL_RESULTS } from '../../domain/query';
 import { NOT_SET_UP_MESSAGE } from '../../domain/settings';
 import { Incident, Resolution, Ticket } from '../../domain/types';
@@ -123,7 +125,7 @@ describe('bundle exists', () => {
     expect(r).not.toHaveProperty('buildId');
     expect(r).not.toHaveProperty('ticketFingerprint');
     expect(r).toMatchObject({ ticketKey: 'ITS-1', builtAt: 't', partial: false, failures: [] });
-    expect(Object.keys(r).sort()).toEqual(['articles', 'builtAt', 'failures', 'incidents', 'partial', 'resolutions', 'services', 'ticketKey']);
+    expect(Object.keys(r).sort()).toEqual(['articles', 'builtAt', 'failures', 'incidents', 'partial', 'resolutions', 'services', 'teams', 'ticketKey']);
   });
 
   it('keeps the build ID on the pending response, as the spec defines it', async () => {
@@ -143,6 +145,16 @@ describe('bundle exists', () => {
       origin: 'llm',
     });
     expect(out).not.toHaveProperty('buildId');
+  });
+
+  it('adds the teams note only when teams are returned, so an agent cannot read a project link as an assignment', () => {
+    const { summary: _none, ...viewer } = bundle;
+    const team = { teamId: 't', name: 'Platform Support', url: '', projectKey: 'ITO', incidentKey: 'ITO-1', evidence: 'Linked to the ITO project, where ITO-1 is tracked' };
+    expect(toMcpBundle({ ...viewer, teams: [team] })).toMatchObject({ teams: [team], teamsNote: TEAMS_NOTE });
+    expect(TEAMS_NOTE).toContain('does not mean the team is assigned to, responsible for, or working on the incident');
+    expect(TEAMS_NOTE).toContain('not as the responsible, owning or investigating team');
+    expect(toMcpBundle({ ...viewer, teams: [] })).not.toHaveProperty('teamsNote');
+    expect(toMcpBundle(viewer)).not.toHaveProperty('teamsNote');
   });
 
   it('leaves the summary out when the viewer has none', () => {

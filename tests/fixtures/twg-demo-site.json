@@ -1,0 +1,31 @@
+{
+  "_about": "Teamwork Graph responses recorded on the demo site (one-atlas-edlg.atlassian.net, development 7.4.0, 2026-11-22T15:27Z, panel resolver as user A), after Platform Support was linked to the ITO project. The project bodies keep only the fields the adapter reads; their self links are the API gateway form the probe parsed the cloud ID from.",
+  "cloudId": "799d4137-e456-418a-99c2-44019a5fc909",
+  "projects": {
+    "ITS": { "id": "10002", "key": "ITS", "self": "https://api.atlassian.com/ex/jira/799d4137-e456-418a-99c2-44019a5fc909/rest/api/3/project/10002" },
+    "ITO": { "id": "10003", "key": "ITO", "self": "https://api.atlassian.com/ex/jira/799d4137-e456-418a-99c2-44019a5fc909/rest/api/3/project/10003" }
+  },
+  "teamsBySpace": {
+    "ari:cloud:jira:799d4137-e456-418a-99c2-44019a5fc909:project/10002": { "data": { "atlassianTeamsBySpace": { "edges": [] } } },
+    "ari:cloud:jira:799d4137-e456-418a-99c2-44019a5fc909:project/10003": {
+      "data": {
+        "atlassianTeamsBySpace": {
+          "edges": [
+            {
+              "node": {
+                "__typename": "AtlassianTeam",
+                "id": "ari:cloud:identity::team/ad3bc097-95a0-41d6-8f61-779acaa56bd2",
+                "displayName": "Platform Support",
+                "profileUrl": "https://home.atlassian.com/o/de0af55c-4a94-4d9f-acdd-07bb2899ddd8/people/team/ad3bc097-95a0-41d6-8f61-779acaa56bd2"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "consumerProbe": {
+    "asUser()": "401 AUTH_TYPE_UNAVAILABLE",
+    "asUser(actor accountId)": "401 NO_IMPERSONATION_SCOPES_DEFINED"
+  }
+}

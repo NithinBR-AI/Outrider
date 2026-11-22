@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   canSee: new Set<string>(),
 }));
 
+// Teamwork Graph (step 11): no linked teams unless a test says otherwise; tests/integration/teams-authorization.test.ts covers teams.
+vi.mock('../../src/adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => new Map(keys.map((key) => [key, []])) }));
 vi.mock('@forge/kvs', () => ({
   kvs: {
     get: async (key: string) => structuredClone(h.store.get(key)),

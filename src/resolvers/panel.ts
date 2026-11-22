@@ -69,6 +69,7 @@ export function forDisplay(bundle: ViewerBundle): ViewerBundle {
     resolutions: top(bundle.resolutions),
     articles: top(bundle.articles),
     services: top(bundle.services),
+    teams: top(bundle.teams),
   };
 }
 

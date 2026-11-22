@@ -12,6 +12,7 @@ Built on Atlassian Forge for Codegeist 2026.
 - Retrieves related incidents and past resolutions from Jira
 - Retrieves relevant runbook and KB articles from Confluence
 - Gates every AI-generated summary claim against a verbatim source span — unsupported claims are dropped and counted
+- Shows the teams linked (in Atlassian Teams) to the projects of related incidents, via Teamwork Graph
 - Exposes the same context bundle via Rovo MCP tools for AI agents
 
 ## Build status
@@ -35,7 +36,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 9 | MCP tools `find-related-incidents` and `find-similar-resolutions` (live search, per-caller filtering), verified with two users via Rovo | ✅ (development) |
 | 9.5 | Per-site settings page (projects, detected fields), "isn't set up" state, no hardcoded projects or fields; verified on the demo site and a second site | ✅ (development) |
 | 10 | Knowledge articles from Confluence (live search, rarity-weighted matching, read-time check as the viewer), spaces on the settings page, articles as summary sources; verified with two users on the demo site | ✅ (development) |
-| 11–14 | Teamwork Graph, embeddings, clustering, demo | 🔜 |
+| 11 | Teams involved via Teamwork Graph, looked up as the viewer at read time (team linked to the project of a related incident), in the panel and `get-ticket-context`; verified with two users on the demo site | ✅ (development) |
+| 12–14 | Embeddings, clustering, demo | 🔜 |
 
 ## Install
 
@@ -55,7 +57,8 @@ The install link above installs the **production** environment, which is updated
 **Site:** `one-atlas-edlg.atlassian.net` (expires 2027-02-18)
 
 Outrider is set up there through its [settings page](#set-up-outrider): context for `ITS` tickets, searching `ITS` and
-`ITO` for incidents and resolutions, and the Confluence space `ITO` for knowledge articles.
+`ITO` for incidents and resolutions, and the Confluence space `ITO` for knowledge articles. In Atlassian Teams,
+the team **Platform Support** is linked to the `ITO` project, which is what the Teams involved section shows.
 
 ### See the JSM panel
 
@@ -65,8 +68,10 @@ Outrider is set up there through its [settings page](#set-up-outrider): context 
    matching source text, and any rejected claims behind "see why"), then the related active incident, the past
    resolution and the related runbook (Auth Service Troubleshooting Runbook), each with a source link, freshness
    and a match label (Strong, Good or Partial)
-4. The incidents, resolutions and knowledge articles sections start expanded. Each has its own **Show less** /
-   **Show more** button next to its heading; an empty section shows "No items" and no button
+4. Under the incidents, **Teams involved** shows **Platform Support**, linked to its team profile, with
+   "Linked to the ITO project, where ITO-9647 is tracked"
+5. The incidents, teams, resolutions and knowledge articles sections start expanded. Each has its own
+   **Show less** / **Show more** button next to its heading; an empty section shows a short message and no button
 
 Context is built when a ticket is created or updated, not when the panel opens. A ticket that has not changed
 since Outrider was installed shows "Context is being prepared": edit any field (for example Urgency), wait a
@@ -88,7 +93,8 @@ minute or two for the Jira event, then press **Refresh** at the top of the panel
    - `Find incidents about VPN`: ITO-9649 (active) and ITO-9646 (resolved)
 
 **`get-ticket-context`** (input: `ticketKey`) returns the same context as the panel, filtered for whoever is asking:
-incidents, resolutions and knowledge articles with source links and freshness (`builtAt`), plus the verified summary (see
+incidents, resolutions and knowledge articles with source links and freshness (`builtAt`), the teams involved (see
+[Teams involved](#teams-involved-teamwork-graph)), plus the verified summary (see
 [Evidence-gated summary](#evidence-gated-summary)). Internal build fields are left out. For a ticket with no context
 yet it answers "being prepared" and queues a build; ask again a minute later.
 
@@ -242,10 +248,37 @@ to generate summaries. The install screen lists this domain.
 - **Staleness:** each bundle records a fingerprint of the ticket fields that affect retrieval. If the ticket changes
   while a build runs, the result is discarded and a fresh build is queued.
 - **Current deviations, by design:** keyword overlap stands in for semantic similarity until embeddings are added,
-  and relationship strength stays 0 until Teamwork Graph relationships are added.
+  and relationship strength stays 0: Teamwork Graph is used for the Teams involved section, not for ranking.
 - **Known limit of keyword matching for articles:** pages that share a generic word with the ticket can still
   tie. For the VPN ticket ITS-6267 the VPN runbook ranks first, but the Auth and Database runbooks are also kept
   (86% of its score) because they contain "connect" and "connection". Embeddings are planned to resolve this.
+
+## Teams involved (Teamwork Graph)
+
+- **What it shows:** the teams linked, in Atlassian Teams, to the Jira project of a related incident. For ITS-6265
+  that is Platform Support, linked to `ITO`, where the related incident ITO-9647 is tracked. Each team links to
+  its profile and says which project and incident connect it. A linked team is not necessarily assigned to the
+  incident, and Outrider does not say it is.
+- **How:** on every read, for the projects of the related incidents the viewer can see (among the five shown),
+  Outrider calls the Teamwork Graph curated query `atlassianTeamsBySpace` as the viewer. Lookups run in parallel
+  within 4 seconds. Teams are shown once each, at most 5, and are never stored.
+- **Empty states:** "No teams linked to this project's space. Link a team to the project in Atlassian Teams to see
+  it here." when no team is linked; "No related incidents to look up teams for." when the viewer sees no related
+  incident; "Teams couldn't be checked right now." when the lookup failed or ran out of time. A failure drops all
+  teams, marks the response partial (`twg:unavailable`) and leaves the other sections unchanged.
+- **For agents:** `get-ticket-context` returns `teams` with the same evidence, plus a `teamsNote` saying the team
+  is linked to the project, not assigned to or working on the incident. Verified via Rovo: without the note the
+  agent wrote "Platform Support is currently investigating"; with it, "Linked Team: Platform Support (linked to the
+  ITO project where the incident is tracked)". The find tools do not return teams.
+- **Why read time only:** Forge apps can call Teamwork Graph only as a user, and on the demo site the build queue
+  cannot call it at all (`asUser()`: 401 `AUTH_TYPE_UNAVAILABLE`; `asUser(accountId)`: 401
+  `NO_IMPERSONATION_SCOPES_DEFINED`). Looking teams up as each viewer on each read means there is nothing stored
+  to re-check.
+- **Why the project link and not the assignee:** every demo-site incident assignee with teams belongs to 9 to 18
+  of them, so "the assignee's teams" could not say which team is involved. No demo-site incident has the Jira Team
+  field set either.
+- **Scopes:** `read:graph:project:jira` and `read:graph:team:atlassian` only. A missing or declined scope makes
+  Teamwork Graph return an empty list rather than an error, so the section then shows "No teams linked".
 
 ## Permissions and data access
 
@@ -261,6 +294,8 @@ to generate summaries. The install screen lists this domain.
   cites, and only pages Confluence returns are shown. A page the viewer cannot see is left out silently, and a
   claim citing it is left out entirely. If the check fails, every article and every claim citing a page is
   dropped and the response is marked partial (`auth:confluence-check-failed`).
+- **Teams:** looked up as the viewer on every read, and only for incidents that viewer can see. A viewer who
+  cannot see any related incident causes no Teamwork Graph call, so learns nothing about the teams.
 - **Revoked access** takes effect on the next read; the stored context does not need to be rebuilt.
 - **MCP tools:** the caller is taken from the Rovo invocation context (`principal.accountId`), never from the tool
   inputs, and a named ticket is checked as that caller before anything else: no build is queued, nothing is read
@@ -276,6 +311,8 @@ to generate summaries. The install screen lists this domain.
   ITS-6265; the second user, who cannot see the ITO space, sees all three sections with "No items". Page-level
   restrictions and revoked page access are covered by the integration tests rather than by changing site
   permissions.
+- Teams verified on the demo site with the same two users: the ITO user sees Platform Support on ITS-6265, in the
+  panel and via Rovo; the second user sees "No related incidents to look up teams for."
 
 ## Testing
 
@@ -299,6 +336,12 @@ to generate summaries. The install screen lists this domain.
   the other sees none), MCP `get-ticket-context` with the same filter, claims citing runbooks against the page's
   current text, and a failed Confluence check. `tests/integration/revoked-access.test.ts` also covers revoked and
   restored access to a page without a rebuild.
+- The Teamwork Graph adapter is tested against responses recorded on the demo site
+  (`tests/fixtures/twg-demo-site.json`): Platform Support for `ITO`, nothing for `ITS`, and every failure path,
+  including the time budget. `tests/integration/teams-authorization.test.ts` checks teams across viewers (one sees
+  Platform Support, the other gets no team and causes no call), a fresh lookup on every read, revoked access, a
+  failed lookup, that teams are never stored, and MCP per caller. Other read-path suites mock Teamwork Graph
+  explicitly as "no linked teams".
 - Domain logic (`src/domain`) is held at 100% branch coverage; `npm run coverage` enforces it.
 
 ## Set up Outrider
@@ -378,7 +421,14 @@ Until then, Outrider lists the space's most recently modified pages instead, so 
 If Outrider is not installed in Confluence on the site, the page shows "Confluence spaces could not be listed" and
 the other settings still work.
 
-### 5. Save
+### 5. Link teams to projects (optional, in Atlassian Teams)
+
+The panel's **Teams involved** section shows the teams linked to the projects of related incidents. This is set
+in Atlassian, not on the Outrider page. To link a team to a Jira project, open the project in Jira, select the
+**team icon** next to its name, search for the team and select **Add** ([Atlassian's guide](https://support.atlassian.com/platform-experiences/docs/using-atlassian-teams-in-jira-projects/)).
+On the demo site, Platform Support is linked to `ITO`. Teamwork Graph showed the new link about a minute later.
+
+### 6. Save
 
 Click **Save**. Outrider checks every choice against Jira before saving:
 
@@ -387,7 +437,7 @@ Click **Save**. Outrider checks every choice against Jira before saving:
 - **A problem:** a red message naming it, for example "Project SUP doesn't exist or Outrider can't see it."
   Nothing is saved, and the previous settings stay in effect.
 
-### 6. Build context for a ticket
+### 7. Build context for a ticket
 
 Context is built when a ticket changes, not when you save the settings. Open a ticket in one of the projects that
 get context, **change any field** (for example Priority), wait up to a minute, then reload the ticket. The
@@ -411,6 +461,7 @@ Tickets in a project you remove show "isn't set up" again; their stored context 
 | No incidents ever appear | The searched projects have no issues of type [System] Incident | Add the project where incidents are tracked to "Projects to search" |
 | Knowledge articles always shows "No items" | No Confluence spaces are chosen, Outrider is not a member of the space, or the ticket shares no distinctive words with any page | Choose a space in step 4, add Outrider as a member of it, then change a field on the ticket to rebuild |
 | A space is missing from the Confluence list | Outrider is not a member of that space | Add Outrider in the space's settings, then reload the settings page |
+| Teams involved says "No teams linked to this project's space" | No team is linked to the related incident's project, or the admin declined the Teamwork Graph scopes | Link a team to the project (step 5), or check Outrider's permissions under Connected apps |
 
 Verified on two sites: the demo site (`ITS` / `ITS`, `ITO`; fields `customfield_10039` and `customfield_10010`
 detected) and a second site set up only through this page (`DEMO`, `OD`; Affected services detected as
@@ -420,12 +471,13 @@ detected) and a second site set up only through this page (`DEMO`, `OD`; Affecte
 ```
 Jira event → Queue → Consumer → (Amazon Bedrock: summary claims) → ContextBundle (KVS) → JSM Panel
                                                                                        → Rovo MCP tools
+Read time, as the viewer: Jira and Confluence visibility, live text for the verifier, Teamwork Graph teams
 ```
 
 | Folder | Contents |
 |---|---|
 | `src/domain` | Pure types, text matching, verification, prompt building, ranking and fingerprint logic, no Forge imports |
-| `src/adapters` | Jira and Confluence REST calls, the Amazon Bedrock (Mantle) call, and KVS storage |
+| `src/adapters` | Jira and Confluence REST calls, Teamwork Graph queries, the Amazon Bedrock (Mantle) call, and KVS storage |
 | `src/pipeline` | Event handler, queue consumer, job routing, bundle builder |
 | `src/resolvers` | Panel resolver and MCP action handlers |
 | `src/frontend` | UI Kit panel |

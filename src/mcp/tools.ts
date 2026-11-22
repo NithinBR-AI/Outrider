@@ -50,6 +50,11 @@ export const CLAIMS_NOTE =
 export const UNSUPPORTED_CLAIM_NOTE =
   "Generated claim whose wording could not be matched to its cited source, so Outrider does not show it as supported. Do not present it as a fact or as something a source says; if it matters, check the sources directly.";
 
+// Step 11. Verified on the demo site: without it, a Rovo agent turned "Platform Support, linked to the ITO project"
+// into "Platform Support is currently investigating", and with a first note still into "Responsible Team". The link is an
+// Atlassian Teams setting on the project only.
+export const TEAMS_NOTE =
+  'Each team is linked in Atlassian Teams to the Jira project where a related incident is tracked (see evidence). This does not mean the team is assigned to, responsible for, or working on the incident. Describe it as a team linked to that project, not as the responsible, owning or investigating team.';
 /** The verified summary as MCP callers receive it. */
 export type McpSummary = {
   claimsNote: string;
@@ -60,13 +65,14 @@ export type McpSummary = {
   origin?: NonNullable<ViewerBundle['summary']>['origin'];
 };
 
-export type McpContextBundle = Omit<ViewerBundle, 'buildId' | 'ticketFingerprint' | 'summary'> & { summary?: McpSummary };
+export type McpContextBundle = Omit<ViewerBundle, 'buildId' | 'ticketFingerprint' | 'summary'> & { summary?: McpSummary; teamsNote?: string };
 
 export type GetTicketContextResult = McpContextBundle | PendingContext | TicketNotAccessible | NotSetUp;
 
 /** Removes internal bookkeeping fields and annotates the verified summary for agents. */
 export function toMcpBundle(bundle: ViewerBundle): McpContextBundle {
-  const { buildId: _buildId, ticketFingerprint: _fingerprint, summary, ...rest } = bundle;
+  const { buildId: _buildId, ticketFingerprint: _fingerprint, summary, ...base } = bundle;
+  const rest: McpContextBundle = (base.teams ?? []).length > 0 ? { ...base, teamsNote: TEAMS_NOTE } : base;
   if (!summary) return rest;
   return {
     ...rest,
