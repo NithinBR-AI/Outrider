@@ -34,7 +34,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 8c | Live LLM summary generation (Amazon Bedrock via Mantle), coverage rule in the verifier, canned demo summary removed | ✅ (development) |
 | 9 | MCP tools `find-related-incidents` and `find-similar-resolutions` (live search, per-caller filtering), verified with two users via Rovo | ✅ (development) |
 | 9.5 | Per-site settings page (projects, detected fields), "isn't set up" state, no hardcoded projects or fields; verified on the demo site and a second site | ✅ (development) |
-| 10–14 | Confluence, TWG, demo | 🔜 |
+| 10 | Knowledge articles from Confluence (live search, rarity-weighted matching, read-time check as the viewer), spaces on the settings page, articles as summary sources; verified with two users on the demo site | ✅ (development) |
+| 11–14 | Teamwork Graph, embeddings, clustering, demo | 🔜 |
 
 ## Install
 
@@ -53,15 +54,19 @@ The install link above installs the **production** environment, which is updated
 
 **Site:** `one-atlas-edlg.atlassian.net` (expires 2027-02-18)
 
-Outrider is set up there through its [settings page](#set-up-outrider): context for `ITS` tickets, searching `ITS` and `ITO`.
+Outrider is set up there through its [settings page](#set-up-outrider): context for `ITS` tickets, searching `ITS` and
+`ITO` for incidents and resolutions, and the Confluence space `ITO` for knowledge articles.
 
 ### See the JSM panel
 
 1. Go to [IT Support queue](https://one-atlas-edlg.atlassian.net/jira/servicedesk/projects/ITS/queues/custom/1)
 2. Open the demo ticket **ITS-6265** ("Cannot log in - getting error on login page")
 3. The **Outrider** panel in the right-side context section shows a live-generated summary (claims with their
-   matching source text, and any rejected claims behind "see why"), then the related active incident and past
-   resolution, each with a source link, freshness and a match label (Strong, Good or Partial)
+   matching source text, and any rejected claims behind "see why"), then the related active incident, the past
+   resolution and the related runbook (Auth Service Troubleshooting Runbook), each with a source link, freshness
+   and a match label (Strong, Good or Partial)
+4. The incidents, resolutions and knowledge articles sections start expanded. Each has its own **Show less** /
+   **Show more** button next to its heading; an empty section shows "No items" and no button
 
 Context is built when a ticket is created or updated, not when the panel opens. A ticket that has not changed
 since Outrider was installed shows "Context is being prepared": edit any field (for example Urgency), wait a
@@ -83,7 +88,7 @@ minute or two for the Jira event, then press **Refresh** at the top of the panel
    - `Find incidents about VPN`: ITO-9649 (active) and ITO-9646 (resolved)
 
 **`get-ticket-context`** (input: `ticketKey`) returns the same context as the panel, filtered for whoever is asking:
-incidents and resolutions with source links and freshness (`builtAt`), plus the verified summary (see
+incidents, resolutions and knowledge articles with source links and freshness (`builtAt`), plus the verified summary (see
 [Evidence-gated summary](#evidence-gated-summary)). Internal build fields are left out. For a ticket with no context
 yet it answers "being prepared" and queues a build; ask again a minute later.
 
@@ -180,7 +185,7 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 ### How the summary is generated
 
 - Every summary is generated live; nothing is canned, the demo ticket included. During each build, the ticket and
-  its incident and resolution excerpts go to **Qwen3-235B on Amazon Bedrock** (via the Mantle endpoint), with
+  its incident, resolution and knowledge article excerpts go to **Qwen3-235B on Amazon Bedrock** (via the Mantle endpoint), with
   DeepSeek v3.2 as a fallback if the first model is unavailable.
 - Sources are sent under neutral labels (S1, S2, …). The model must cite a label for each claim; Outrider maps it
   back to the ticket. A claim citing an unknown label is never shown.
@@ -188,19 +193,23 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
   It is never asked for an unsupported claim. When it rewords or goes beyond a source, the verifier removes the
   claim, so a rejection appears in some builds and not in others.
 - If nothing relevant changed since the last build, the stored claims are reused and no model call is made.
-- If generation fails or the model is unreachable, the panel shows the incident and resolution sections without a
-  summary.
+- If generation fails or the model is unreachable, the panel shows the incident, resolution and knowledge article
+  sections without a summary.
 - Verified on the demo site: Qwen3-235B answered in about 2 seconds from Forge (about 660 input and 180 output
   tokens). For ITS-6265 it gave 6 claims: 5 shown, and 1 rejected (a reworded statement of the SSL fix).
+  With the related runbook added as a source (step 10), the ITS-6265 prompt is about 1,300 input tokens.
+- A claim citing a runbook is checked against the page's current text, fetched as the viewer, the same way as a
+  claim citing a Jira issue.
 
 ## Data sent outside Atlassian
 
 Outrider calls one external service: **Amazon Bedrock (AWS us-east-1)** at `bedrock-mantle.us-east-1.api.aws`,
 to generate summaries. The install screen lists this domain.
 
-- **Sent:** the ticket's summary and description, and the stored excerpts and titles of its related incidents and
-  past resolutions, with emails and links replaced by placeholders.
-- **Not sent:** account IDs, user fields such as reporter or assignee, ticket keys, or links to Jira. Text inside
+- **Sent:** the ticket's summary and description, and the stored excerpts and titles of its related incidents,
+  past resolutions and knowledge articles (Confluence runbook and page excerpts, up to 600 characters each), with
+  emails and links replaced by placeholders. Full page bodies are never sent or stored.
+- **Not sent:** account IDs, user fields such as reporter or assignee, ticket keys, page IDs, or links to Jira or Confluence. Text inside
   a ticket is sent as written apart from emails and links, so a name typed into a description is included.
 - **When:** only during a context build, when the content above changed. Never when the panel opens or MCP is called.
 - **Credential:** an Amazon Bedrock API key stored as an encrypted Forge environment variable. It is never in
@@ -217,11 +226,26 @@ to generate summaries. The install screen lists this domain.
 - **Ranking:** a fixed formula weighs similarity (35%), relationship (25%), status (20%, active above resolved),
   recency (10%, 30-day half-life) and source authority (10%). Ties are broken by a shared Affected service,
   then recency, then source key, so the same data always gives the same order.
-- **Limits:** up to 20 candidates are stored per ticket; the panel shows at most 5 per section.
+- **Knowledge articles:** searched live in the configured Confluence spaces during each build; there is no index.
+  - **Search:** one CQL search as the app for any of the ticket's 8 strongest keywords (up to 25 pages). If CQL
+    finds nothing or fails, Outrider lists the most recently modified pages in those spaces instead. The build
+    log records which path was used, as `articles for <ticket>: cql|recent-pages, <n> candidate(s), <n> related`.
+  - **Matching:** each ticket keyword counts in proportion to how rare it is among that build's candidate pages,
+    so words found in most runbooks ("log", "page") count for little and words found in one ("vpn", "cache")
+    count for a lot. A page is kept only if it reaches a score of 0.2 and at least 60% of the best page's score.
+    On the demo site this keeps only the Auth runbook for ITS-6265, including when the ticket has only a summary.
+  - **Ranking:** the same formula as above, with status fixed at 0.2, recency from the page's last update, and
+    authority 1.0 for runbooks and policies and 0.7 for other pages (from the page's labels, or its title when
+    it has none).
+- **Limits:** up to 20 candidates are stored per ticket; the panel shows at most 5 per section. Only article
+  excerpts (up to 600 characters) are stored, never full page text.
 - **Staleness:** each bundle records a fingerprint of the ticket fields that affect retrieval. If the ticket changes
   while a build runs, the result is discarded and a fresh build is queued.
 - **Current deviations, by design:** keyword overlap stands in for semantic similarity until embeddings are added,
   and relationship strength stays 0 until Teamwork Graph relationships are added.
+- **Known limit of keyword matching for articles:** pages that share a generic word with the ticket can still
+  tie. For the VPN ticket ITS-6267 the VPN runbook ranks first, but the Auth and Database runbooks are also kept
+  (86% of its score) because they contain "connect" and "connection". Embeddings are planned to resolve this.
 
 ## Permissions and data access
 
@@ -233,6 +257,10 @@ to generate summaries. The install screen lists this domain.
 - **No access to a source:** the incident or resolution is left out with no placeholder or count. A section
   the viewer cannot see into looks the same as an empty one.
 - **Check fails:** nothing is shown. A failed permission check is treated as "not authorized".
+- **Knowledge articles:** one batch page fetch runs as the viewer for every article and every page the summary
+  cites, and only pages Confluence returns are shown. A page the viewer cannot see is left out silently, and a
+  claim citing it is left out entirely. If the check fails, every article and every claim citing a page is
+  dropped and the response is marked partial (`auth:confluence-check-failed`).
 - **Revoked access** takes effect on the next read; the stored context does not need to be rebuilt.
 - **MCP tools:** the caller is taken from the Rovo invocation context (`principal.accountId`), never from the tool
   inputs, and a named ticket is checked as that caller before anything else: no build is queued, nothing is read
@@ -244,6 +272,10 @@ to generate summaries. The install screen lists this domain.
 - Verified on the demo site with two real users: an agent with ITS and ITO access sees the related ITO incident
   and fix on ITS-6265; an ITS-only agent sees empty sections. Granting and then revoking ITO access for the
   second user made the items appear and disappear on Refresh, with the same stored context.
+- Knowledge articles verified on the demo site with the same two users: the ITO user sees the Auth runbook on
+  ITS-6265; the second user, who cannot see the ITO space, sees all three sections with "No items". Page-level
+  restrictions and revoked page access are covered by the integration tests rather than by changing site
+  permissions.
 
 ## Testing
 
@@ -259,6 +291,14 @@ to generate summaries. The install screen lists this domain.
   the newer context wins in the tested interleavings.
 - The Jira adapter is tested against responses recorded from the demo site (`tests/fixtures/jira-demo-site.json`),
   so CI never calls Atlassian APIs.
+- The Confluence adapter and article matching are tested against pages recorded from the demo site's `ITO` space
+  (`tests/fixtures/confluence-demo-site.json`, 13 pages) and the recorded tickets ITS-6265 and ITS-6267
+  (`tests/fixtures/jira-its-6267.json`): which runbooks each ticket keeps, the CQL and recent-pages paths, and
+  the viewer fetch.
+- `tests/integration/confluence-authorization.test.ts` checks articles across two viewers (one sees the runbooks,
+  the other sees none), MCP `get-ticket-context` with the same filter, claims citing runbooks against the page's
+  current text, and a failed Confluence check. `tests/integration/revoked-access.test.ts` also covers revoked and
+  restored access to a page without a rebuild.
 - Domain logic (`src/domain`) is held at 100% branch coverage; `npm run coverage` enforces it.
 
 ## Set up Outrider
@@ -319,7 +359,26 @@ You normally leave both as detected. Field IDs differ between sites (for example
 site and `customfield_10048` on another site we tested), which is why they are detected rather than typed. Choose
 **Not used** if your site has no such field; Outrider still works.
 
-### 4. Save
+### 4. Choose Confluence spaces (optional)
+
+Under **Knowledge articles (Confluence)**, choose the spaces that hold your runbooks and articles in **Confluence
+spaces to search for runbooks and articles**. On the demo site this is `ITO`. With no spaces chosen, the panel's
+Knowledge articles section stays empty and everything else works.
+
+Outrider sees only the Confluence spaces it is a member of, so the list shows only those. To add a space:
+
+1. In Confluence, open the space and go to **Space settings** → **Members** (or the space's permissions page).
+2. Add the **Outrider** app as a member with view access. On the demo site both Outrider apps were added, the
+   production one and the development one.
+3. Reload the Outrider settings page; the space now appears in the list.
+
+New access can take **10 to 15 minutes** to reach Confluence search (measured on the demo site: about 13 minutes).
+Until then, Outrider lists the space's most recently modified pages instead, so articles still appear.
+
+If Outrider is not installed in Confluence on the site, the page shows "Confluence spaces could not be listed" and
+the other settings still work.
+
+### 5. Save
 
 Click **Save**. Outrider checks every choice against Jira before saving:
 
@@ -328,7 +387,7 @@ Click **Save**. Outrider checks every choice against Jira before saving:
 - **A problem:** a red message naming it, for example "Project SUP doesn't exist or Outrider can't see it."
   Nothing is saved, and the previous settings stay in effect.
 
-### 5. Build context for a ticket
+### 6. Build context for a ticket
 
 Context is built when a ticket changes, not when you save the settings. Open a ticket in one of the projects that
 get context, **change any field** (for example Priority), wait up to a minute, then reload the ticket. The
@@ -350,6 +409,8 @@ Tickets in a project you remove show "isn't set up" again; their stored context 
 | Panel stays on "Context is being prepared" | The ticket has not changed since setup, or its build is still running | Change a field on the ticket, wait a minute, reload |
 | The page shows "Outrider could not read projects and fields from Jira just now" | Jira did not answer | Reload the page |
 | No incidents ever appear | The searched projects have no issues of type [System] Incident | Add the project where incidents are tracked to "Projects to search" |
+| Knowledge articles always shows "No items" | No Confluence spaces are chosen, Outrider is not a member of the space, or the ticket shares no distinctive words with any page | Choose a space in step 4, add Outrider as a member of it, then change a field on the ticket to rebuild |
+| A space is missing from the Confluence list | Outrider is not a member of that space | Add Outrider in the space's settings, then reload the settings page |
 
 Verified on two sites: the demo site (`ITS` / `ITS`, `ITO`; fields `customfield_10039` and `customfield_10010`
 detected) and a second site set up only through this page (`DEMO`, `OD`; Affected services detected as
@@ -364,7 +425,7 @@ Jira event → Queue → Consumer → (Amazon Bedrock: summary claims) → Conte
 | Folder | Contents |
 |---|---|
 | `src/domain` | Pure types, text matching, verification, prompt building, ranking and fingerprint logic, no Forge imports |
-| `src/adapters` | Jira REST calls, the Amazon Bedrock (Mantle) call, and KVS storage |
+| `src/adapters` | Jira and Confluence REST calls, the Amazon Bedrock (Mantle) call, and KVS storage |
 | `src/pipeline` | Event handler, queue consumer, job routing, bundle builder |
 | `src/resolvers` | Panel resolver and MCP action handlers |
 | `src/frontend` | UI Kit panel |

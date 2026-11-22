@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   enqueueTicketBuild: vi.fn(),
   requeueTicketJob: vi.fn(),
   generateClaims: vi.fn(),
+  searchArticles: vi.fn(),
 }));
 
 // In-memory KVS: FAIL_IF_EXISTS rejects when the key exists; expired keys are not removed.
@@ -31,6 +32,7 @@ vi.mock('../../adapters/jira', () => ({
 vi.mock('../enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild, requeueTicketJob: h.requeueTicketJob }));
 // No network: the model call is mocked; the adapter has its own tests (adapters/__tests__/mantle.test.ts).
 vi.mock('../../adapters/mantle', () => ({ generateClaims: h.generateClaims }));
+vi.mock('../../adapters/confluence', () => ({ searchArticles: h.searchArticles }));
 
 import { buildTicketBundle } from '../buildTicket';
 import { ticketFingerprint } from '../../domain/extract';
@@ -53,6 +55,7 @@ beforeEach(() => {
   h.searchResolutions.mockReset().mockResolvedValue([resolution('ITO-2')]);
   h.enqueueTicketBuild.mockReset().mockResolvedValue({ buildId: 'build-next', requestedAt: 'r2' });
   h.requeueTicketJob.mockReset().mockResolvedValue(undefined);
+  h.searchArticles.mockReset().mockResolvedValue([]);
   h.generateClaims.mockReset().mockResolvedValue({
     claims: [{ claimId: 'llm-1-abc', text: 'The auth service is returning 503 errors.', citedSourceRef: ref('ITO-1') }],
     model: 'qwen.qwen3-235b-a22b-2507',
@@ -436,5 +439,37 @@ describe('site settings (spec Phase 5.5)', () => {
     expect(h.getTicket).not.toHaveBeenCalled();
     expect(bundle()).toBeUndefined();
     expect(status()).toMatchObject({ status: 'failed', error: 'not-configured' });
+  });
+});
+
+describe('knowledge articles (step 10)', () => {
+  const article = { source: { kind: 'confluence-page' as const, id: '4194312', url: 'https://x/wiki/p/4194312', title: 'Auth runbook', updatedAt: 'u' }, excerpt: 'Check the auth service.', kind: 'runbook' as const, relevance: 0.4 };
+
+  it('searches the configured spaces, stores the articles and offers them to the summary as sources', async () => {
+    h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], confluenceSpaces: ['ITO'], savedAt: 't' });
+    h.searchArticles.mockResolvedValue([article]);
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.searchArticles).toHaveBeenCalledWith(ticket, expect.objectContaining({ confluenceSpaces: ['ITO'] }), expect.any(Date));
+    expect(bundle()!.articles).toEqual([article]);
+    const labels = h.generateClaims.mock.calls[0][0].labels as Record<string, { id: string }>;
+    expect(Object.values(labels).map((r) => r.id)).toContain('4194312');
+  });
+
+  it('does not search Confluence when no spaces are configured', async () => {
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(h.searchArticles).not.toHaveBeenCalled();
+    expect(bundle()!.articles).toEqual([]);
+  });
+
+  it('a Confluence failure keeps the Jira sections and marks only that section failed', async () => {
+    h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: ['ITO'], savedAt: 't' });
+    h.searchArticles.mockRejectedValue(new Error('confluence-recent-500'));
+    setStatus({});
+    await buildTicketBundle(job());
+    expect(bundle()!.incidents).toHaveLength(1);
+    expect(bundle()!.failures).toEqual(['confluence-articles']);
+    expect(bundle()!.partial).toBe(true);
   });
 });

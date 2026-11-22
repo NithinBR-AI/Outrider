@@ -180,3 +180,19 @@ describe('end to end with the verifier (recorded Qwen3-235B output, step 8c prom
     expect(JSON.stringify(r)).not.toContain('EU are unaffected');
   });
 });
+
+describe('knowledge articles as sources (step 10)', () => {
+  it('labels articles after incidents and resolutions, with their kind and excerpt', () => {
+    const a = { source: { ...ref('4194312', 'Auth Service Troubleshooting Runbook'), kind: 'confluence-page' as const }, excerpt: 'Check auth-lb-01 certificates first.', kind: 'runbook' as const, relevance: 0.4 };
+    const p = buildGenerationPrompt(ticket, [incident('ITO-9647')], [resolution('ITO-9642')], [a])!;
+    expect(Object.keys(p.labels)).toEqual(['S1', 'S2', 'S3']);
+    expect(p.labels.S3.id).toBe('4194312');
+    expect(p.user).toContain('[S3] (runbook)\nTitle: Auth Service Troubleshooting Runbook\nCheck auth-lb-01 certificates first.');
+    expect(p.user).not.toContain('4194312');
+  });
+
+  it('builds a prompt from articles alone', () => {
+    const a = { source: { ...ref('1'), kind: 'confluence-page' as const }, excerpt: 'x', kind: 'guide' as const, relevance: 0.3 };
+    expect(Object.keys(buildGenerationPrompt(ticket, [], [], [a])!.labels)).toEqual(['S1']);
+  });
+});

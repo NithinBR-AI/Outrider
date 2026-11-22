@@ -33,6 +33,7 @@ const App = () => {
       setForm({
         bundleProjects: s?.bundleProjects ?? [],
         sourceProjects: s?.sourceProjects ?? [],
+        confluenceSpaces: s?.confluenceSpaces ?? [],
         // Saved values win; otherwise pre-fill what was detected from the site's field types.
         affectedServicesField: s ? s.affectedServicesField ?? '' : d.detected.affectedServicesField ?? '',
         requestTypeField: s ? s.requestTypeField ?? '' : d.detected.requestTypeField ?? '',
@@ -46,6 +47,9 @@ const App = () => {
 
   const projectOptions = data.projects.map(projectOption);
   const chosen = (keys) => projectOptions.filter((o) => keys.includes(o.value));
+  const spaceOptions = (data.spaces ?? []).map((s) => ({ label: `${s.name} (${s.key})`, value: s.key }));
+  // A saved space Outrider can no longer see stays listed, so saving does not silently drop it.
+  for (const key of form.confluenceSpaces) if (!spaceOptions.some((o) => o.value === key)) spaceOptions.push({ label: key, value: key });
   const servicesOptions = fieldChoices(data.fieldOptions.affectedServices, form.affectedServicesField);
   const requestOptions = fieldChoices(data.fieldOptions.requestType, form.requestTypeField);
   const detectedNote = (key, value) => (value && value === data.detected[key] ? 'Detected automatically from this site\'s fields.' : null);
@@ -86,6 +90,23 @@ const App = () => {
           <HelperMessage>Include the service desk projects and any project where incidents are tracked. Incidents are issues of type [System] Incident.</HelperMessage>
         </Box>
         {data.projectsTruncated ? <Text size="small">Only the first {data.projects.length} projects are listed.</Text> : null}
+      </Stack>
+
+      <Stack space="space.100">
+        <Heading size="small">Knowledge articles (Confluence)</Heading>
+        {data.spacesError ? (
+          <SectionMessage appearance="warning"><Text>{data.spacesError}</Text></SectionMessage>
+        ) : null}
+        <Box>
+          <Label labelFor="confluenceSpaces">Confluence spaces to search for runbooks and articles</Label>
+          <Select inputId="confluenceSpaces" isMulti options={spaceOptions} value={spaceOptions.filter((o) => form.confluenceSpaces.includes(o.value))}
+            onChange={(v) => setForm({ ...form, confluenceSpaces: (v ?? []).map((o) => o.value) })} />
+          <HelperMessage>
+            Optional. Only spaces Outrider is a member of are listed. If a space is missing, add Outrider as a member in that space's
+            settings (Space settings, Members). New access can take 10 to 15 minutes to reach search; until then Outrider lists the
+            space's recent pages instead.
+          </HelperMessage>
+        </Box>
       </Stack>
 
       <Stack space="space.100">

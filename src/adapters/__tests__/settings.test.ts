@@ -22,11 +22,16 @@ vi.mock('@forge/api', () => ({
         const r = h.handler!(path);
         return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.json };
       },
+      requestConfluence: async (path: string) => {
+        h.calls.push(path);
+        const r = h.handler!(path);
+        return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.json };
+      },
     }),
   },
 }));
 
-import { getSettings, listFields, listProjects, MAX_LISTED_PROJECTS, saveSettings, SETTINGS_KEY } from '../settings';
+import { getSettings, listFields, listProjects, listSpaces, MAX_LISTED_PROJECTS, saveSettings, SETTINGS_KEY } from '../settings';
 
 // A site with projects SUP and INC and the two JSM fields.
 const site = (path: string) => {
@@ -126,5 +131,56 @@ describe('listProjects', () => {
     h.handler = () => ({ status: 500 });
     await expect(listProjects()).rejects.toThrow('jira-projects-500');
     await expect(listFields()).rejects.toThrow('jira-fields-500');
+  });
+});
+
+describe('Confluence spaces (step 10)', () => {
+  const withSpaces = (path: string) => {
+    if (path.startsWith('/wiki/api/v2/spaces?keys=')) {
+      const keys = /keys=([^&]+)/.exec(path)![1].split(',');
+      return { status: 200, json: { results: keys.filter((k) => k === 'ITO' || k === 'KB').map((key) => ({ key })) } };
+    }
+    return site(path);
+  };
+
+  it('saves chosen spaces that exist and that Outrider can see', async () => {
+    h.handler = withSpaces;
+    expect(await saveSettings({ ...VALID, confluenceSpaces: ['ito', 'KB'] })).toMatchObject({ ok: true, settings: { confluenceSpaces: ['ITO', 'KB'] } });
+    expect(h.calls).toContain('/wiki/api/v2/spaces?keys=ITO,KB&limit=2');
+  });
+
+  it('rejects a space Outrider cannot see, says how to fix it, and saves nothing', async () => {
+    h.handler = withSpaces;
+    expect(await saveSettings({ ...VALID, confluenceSpaces: ['ITO', 'HR'] })).toEqual({
+      ok: false,
+      message: "Confluence space HR doesn't exist or Outrider can't see it. Add Outrider as a member of that space, then try again.",
+    });
+    expect(h.store.has(SETTINGS_KEY)).toBe(false);
+  });
+
+  it('does not call Confluence when no space is chosen', async () => {
+    await saveSettings(VALID);
+    expect(h.calls.some((c) => c.startsWith('/wiki/'))).toBe(false);
+  });
+
+  it('lists global spaces across pages, skipping personal spaces', async () => {
+    h.handler = (path) => {
+      if (!path.includes('cursor=')) return { status: 200, json: { results: [{ key: 'ITO', name: 'IT Operations' }, { key: '~600a7', name: 'Me' }], _links: { next: '/wiki/api/v2/spaces?type=global&limit=50&cursor=abc' } } };
+      return { status: 200, json: { results: [{ key: 'KB' }], _links: {} } };
+    };
+    expect(await listSpaces()).toEqual({ spaces: [{ key: 'ITO', name: 'IT Operations' }, { key: 'KB', name: 'KB' }], truncated: false });
+    expect(h.calls[1]).toContain('cursor=abc');
+  });
+
+  it('stops at the listing limit and says so, and throws a short code on failure', async () => {
+    h.handler = () => ({ status: 200, json: { results: [{ key: 'S' }], _links: { next: '/wiki/api/v2/spaces?cursor=more' } } });
+    expect((await listSpaces()).truncated).toBe(true);
+    h.handler = () => ({ status: 403 });
+    await expect(listSpaces()).rejects.toThrow('confluence-spaces-403');
+  });
+
+  it('a Confluence failure during the space check saves nothing', async () => {
+    h.handler = (path) => (path.startsWith('/wiki/') ? { status: 500 } : site(path));
+    expect(await saveSettings({ ...VALID, confluenceSpaces: ['ITO'] })).toEqual({ ok: false, message: 'Jira could not be checked just now. Nothing was saved; try again.' });
   });
 });

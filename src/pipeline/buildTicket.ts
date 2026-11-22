@@ -13,11 +13,12 @@
 // All of this is best-effort, not strict mutual exclusion (§8.5, §8.6, §18.9). Read-time
 // authorization (§16) is step 6c-2.
 import { randomUUID } from 'crypto';
-import { BuildJob, ContextBundle, Incident, PersistedSummary, Resolution, Ticket } from '../domain/types';
+import { Article, BuildJob, ContextBundle, Incident, PersistedSummary, Resolution, Ticket } from '../domain/types';
 import { ticketFingerprint } from '../domain/extract';
 import { limitCandidates } from '../domain/score';
 import { buildGenerationPrompt, promptHash } from '../domain/generate';
 import * as jira from '../adapters/jira';
+import * as confluence from '../adapters/confluence';
 import { generateClaims } from '../adapters/mantle';
 import { getSettings } from '../adapters/settings';
 import { isBundleTicket } from '../domain/settings';
@@ -82,8 +83,8 @@ export async function buildTicketBundle(job: TicketJob): Promise<void> {
  * does not mark the bundle partial: partial and failures describe sources.
  * If the previous bundle's live summary came from an identical prompt, its claims are reused without a call.
  */
-async function summarize(ticket: Ticket, incidents: Incident[], resolutions: Resolution[]): Promise<PersistedSummary | undefined> {
-  const prompt = buildGenerationPrompt(ticket, incidents, resolutions);
+async function summarize(ticket: Ticket, incidents: Incident[], resolutions: Resolution[], articles: Article[]): Promise<PersistedSummary | undefined> {
+  const prompt = buildGenerationPrompt(ticket, incidents, resolutions, articles);
   if (!prompt) return undefined;
   const hash = promptHash(prompt);
   const previous = await getBundle(ticket.key).catch(() => undefined);
@@ -119,18 +120,19 @@ async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
   const fingerprint = ticketFingerprint(ticket);
   const now = new Date();
   const failures: string[] = [];
-  const [incidents, resolutions] = await Promise.all([
+  const [incidents, resolutions, articles] = await Promise.all([
     safe(() => jira.searchIncidents(ticket, settings, now), [], failures, 'jira-incidents'),
     safe(() => jira.searchResolutions(ticket, settings, now), [], failures, 'jira-resolutions'),
+    (settings.confluenceSpaces ?? []).length > 0 ? safe(() => confluence.searchArticles(ticket, settings, now), [], failures, 'confluence-articles') : Promise.resolve([]),
   ]);
 
   // An incident that also appears as a past resolution is shown once, as the resolution.
   const resolutionKeys = new Set(resolutions.map((r) => r.source.id));
   const dedupedIncidents = incidents.filter((i) => !resolutionKeys.has(i.source.id));
-  const [keptIncidents, keptResolutions] = limitCandidates([dedupedIncidents, resolutions]);
+  const [keptIncidents, keptResolutions, keptArticles] = limitCandidates([dedupedIncidents, resolutions, articles]);
 
   // Before the stale check, so a ticket edited while the model runs still discards this result.
-  const summary = await summarize(ticket, keptIncidents, keptResolutions);
+  const summary = await summarize(ticket, keptIncidents, keptResolutions, keptArticles);
 
   // Stale-build protection (§8.4): the ticket must be unchanged since retrieval started.
   const latestTicket = await jira.getTicket(ticketKey, settings);
@@ -164,7 +166,7 @@ async function runBuild(job: TicketJob, ownerToken: string): Promise<void> {
     ticketFingerprint: fingerprint,
     incidents: keptIncidents,
     resolutions: keptResolutions,
-    articles: [], // Step 10 (Confluence).
+    articles: keptArticles,
     services: [], // Step 11 (Teamwork Graph).
     partial: failures.length > 0,
     failures,

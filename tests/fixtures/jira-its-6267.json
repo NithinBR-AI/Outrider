@@ -1,0 +1,20 @@
+{
+    "_about":  "Recorded read-only from one-atlas-edlg (demo site) on 2026-11-22 as user A: summary and description of ITS-6267 (VPN ticket), for the step 10 article relevance tests. No account IDs.",
+    "key":  "ITS-6267",
+    "summary":  "Unable to connect to VPN - connection times out",
+    "description":  {
+                        "type":  "doc",
+                        "version":  1,
+                        "content":  [
+                                        {
+                                            "type":  "paragraph",
+                                            "content":  [
+                                                            {
+                                                                "type":  "text",
+                                                                "text":  "I\u0027ve been working from home for months without issues. Today when I try to connect to the VPN it just times out after 60 seconds. I haven\u0027t changed anything on my laptop. My colleague has the same issue."
+                                                            }
+                                                        ]
+                                        }
+                                    ]
+                    }
+}

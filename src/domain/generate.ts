@@ -12,7 +12,7 @@
 // - Ticket and source text are untrusted. They are passed as data inside labelled blocks; a prompt
 //   injection can at most produce claims, and a claim is shown only if its cited source supports it.
 import { createHash } from 'crypto';
-import { GeneratedClaim, Incident, Resolution, SourceRef, Ticket } from './types';
+import { Article, GeneratedClaim, Incident, Resolution, SourceRef, Ticket } from './types';
 
 // Sources sent per prompt, in ranked order (incidents first, then resolutions).
 export const MAX_PROMPT_SOURCES = 8;
@@ -80,10 +80,11 @@ function incidentKind(status: Incident['status']): string {
  * The prompt for one ticket, or null when there is nothing to summarize (no sources): no call is made
  * and the bundle simply has no summary.
  */
-export function buildGenerationPrompt(ticket: Ticket, incidents: Incident[], resolutions: Resolution[]): GenerationPrompt | null {
+export function buildGenerationPrompt(ticket: Ticket, incidents: Incident[], resolutions: Resolution[], articles: Article[] = []): GenerationPrompt | null {
   const sources = [
     ...incidents.map((i) => ({ ref: i.source, kind: incidentKind(i.status), text: i.summary })),
     ...resolutions.map((r) => ({ ref: r.source, kind: 'past resolution', text: r.resolutionText })),
+    ...articles.map((a) => ({ ref: a.source, kind: a.kind, text: a.excerpt })),
   ].slice(0, MAX_PROMPT_SOURCES);
   if (sources.length === 0) return null;
 

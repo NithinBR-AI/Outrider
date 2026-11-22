@@ -7,14 +7,32 @@
 //   empty section looks the same as a genuinely empty one (§16.4, §17.2).
 // - If the visibility check itself failed, every Jira source is dropped, the response is marked
 //   partial and records auth:jira-check-failed. "Could not verify" means "not authorized" (§16.5).
-// - Sections without a read-time check yet (Confluence articles: step 10; Teamwork Graph services:
-//   step 11) are never served unchecked, so they are dropped here until their checks exist.
+// - Confluence articles are kept only if the viewer can see that page right now (one batch page fetch as the
+//   viewer, step 10). A failed check drops every article and records auth:confluence-check-failed.
+// - Teamwork Graph services have no read-time check yet (step 11), so they are never served.
 // - The stored summary (generated claims) is never copied over. withVerifiedSummary attaches the
 //   summary as verified for this viewer instead (§13.6).
 import { ContextBundle, PersistedSummary, ViewerBundle } from './types';
 import { citedSources, LiveSource, verifyClaims } from './verify';
 
 export const AUTH_JIRA_CHECK_FAILED = 'auth:jira-check-failed';
+export const AUTH_CONFLUENCE_CHECK_FAILED = 'auth:confluence-check-failed';
+
+/** Every Confluence page ID the bundle would reveal: its articles and the pages its summary cites. */
+export function bundlePageIds(bundle: ContextBundle): string[] {
+  const ids = [
+    ...(bundle.articles ?? []).map((a) => a.source),
+    ...citedSources(bundle.summary?.generatedClaims ?? []),
+  ]
+    .filter((s) => s.kind === 'confluence-page')
+    .map((s) => s.id);
+  return [...new Set(ids)];
+}
+
+/** Adds a failure identifier once and marks the response partial. */
+export function withFailure(viewer: ViewerBundle, failure: string): ViewerBundle {
+  return viewer.failures.includes(failure) ? { ...viewer, partial: true } : { ...viewer, failures: [...viewer.failures, failure], partial: true };
+}
 
 /** Every Jira issue key the bundle would reveal to a viewer, other than the ticket itself. */
 export function bundleSourceKeys(bundle: ContextBundle): string[] {
@@ -28,13 +46,15 @@ export function bundleSourceKeys(bundle: ContextBundle): string[] {
 }
 
 /**
- * Builds the viewer's copy of a bundle. `visible` is the set of issue keys the viewer can see, or
- * null if the check failed. Always returns a new object; the stored bundle is never returned as is.
+ * Builds the viewer's copy of a bundle. `visible` is the set of issue keys the viewer can see, and
+ * `visiblePages` the set of Confluence page IDs; either is null if that check failed. Always returns a new
+ * object; the stored bundle is never returned as is.
  */
-export function filterBundleForViewer(bundle: ContextBundle, visible: Set<string> | null): ViewerBundle {
+export function filterBundleForViewer(bundle: ContextBundle, visible: Set<string> | null, visiblePages: Set<string> | null = new Set()): ViewerBundle {
   const canSee = (kind: string, id: string) => visible !== null && kind === 'jira-issue' && visible.has(id);
   const failures = [...(bundle.failures ?? [])];
   if (visible === null && bundleSourceKeys(bundle).length > 0) failures.push(AUTH_JIRA_CHECK_FAILED);
+  if (visiblePages === null && (bundle.articles ?? []).length > 0) failures.push(AUTH_CONFLUENCE_CHECK_FAILED);
 
   const filtered: ViewerBundle = {
     ticketKey: bundle.ticketKey,
@@ -43,7 +63,7 @@ export function filterBundleForViewer(bundle: ContextBundle, visible: Set<string
     ticketFingerprint: bundle.ticketFingerprint,
     incidents: (bundle.incidents ?? []).filter((i) => canSee(i.source.kind, i.source.id)),
     resolutions: (bundle.resolutions ?? []).filter((r) => canSee(r.source.kind, r.source.id)),
-    articles: [],
+    articles: (bundle.articles ?? []).filter((a) => visiblePages !== null && a.source.kind === 'confluence-page' && visiblePages.has(a.source.id)),
     services: [],
     partial: failures.length > 0,
     failures,

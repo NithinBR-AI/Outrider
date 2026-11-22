@@ -124,6 +124,10 @@ permissions:
     - read:confluence-content.summary
     - read:confluence-content.all
     - read:space:confluence
+    # Step 10: CQL search for knowledge articles, as the app (GET /wiki/rest/api/search).
+    - search:confluence
+    # Step 10: batch page fetch by ID, as the viewer (GET /wiki/api/v2/pages): read-time check and live text.
+    - read:page:confluence
     - storage:app
   # Summary generation: Amazon Bedrock via Mantle (spec §12.6), declared in remotes below.
   external:

@@ -1,6 +1,6 @@
 // Read-time filtering tests (spec §16.4, §16.5).
 import { describe, expect, it } from 'vitest';
-import { AUTH_JIRA_CHECK_FAILED, bundleSourceKeys, citedJiraKeys, filterBundleForViewer, withVerifiedSummary } from '../authorize';
+import { AUTH_CONFLUENCE_CHECK_FAILED, AUTH_JIRA_CHECK_FAILED, bundlePageIds, bundleSourceKeys, citedJiraKeys, filterBundleForViewer, withFailure, withVerifiedSummary } from '../authorize';
 import { ContextBundle, Incident, Resolution } from '../types';
 
 const ref = (id: string, kind: 'jira-issue' | 'confluence-page' = 'jira-issue') => ({ kind, id, url: `https://x/${id}`, title: id, updatedAt: 'u' });
@@ -75,9 +75,9 @@ describe('filterBundleForViewer', () => {
     expect(out.partial).toBe(true);
   });
 
-  it('never serves unchecked sections or summaries', () => {
+  it('never serves unchecked sections or summaries: articles without a page check, services, stored claims', () => {
     const b = stored({
-      articles: [{ source: ref('123', 'confluence-page'), excerpt: 'page text', kind: 'runbook' }],
+      articles: [{ source: ref('123', 'confluence-page'), excerpt: 'page text', kind: 'runbook', relevance: 0.5 }],
       services: [{ serviceName: 'Online Sales', relationship: 'affected-by', evidence: 'e', resolvedForAccountId: 'a' }],
       summary: { generatedClaims: [{ claimId: 'c1', text: 'claim', citedSourceRef: null }] },
     });
@@ -85,6 +85,62 @@ describe('filterBundleForViewer', () => {
     expect(out.articles).toEqual([]);
     expect(out.services).toEqual([]);
     expect(out.summary).toBeUndefined();
+  });
+
+  describe('Confluence articles (step 10)', () => {
+    const article = (id: string) => ({ source: ref(id, 'confluence-page'), excerpt: `${id} text`, kind: 'runbook' as const, relevance: 0.5 });
+    const withArticles = () => stored({ articles: [article('4194312'), article('4292631')] });
+
+    it('keeps only the pages the viewer can see, without a trace of the rest', () => {
+      const out = filterBundleForViewer(withArticles(), new Set(['ITS-1']), new Set(['4194312']));
+      expect(out.articles.map((a) => a.source.id)).toEqual(['4194312']);
+      expect(out.partial).toBe(false);
+      expect(JSON.stringify(out)).not.toContain('4292631');
+    });
+
+    it('a viewer who can see no page gets an empty section, same as a genuinely empty one', () => {
+      const out = filterBundleForViewer(withArticles(), new Set(['ITS-1']), new Set());
+      expect(out.articles).toEqual([]);
+      expect(out).toEqual(filterBundleForViewer(stored({ articles: [] }), new Set(['ITS-1']), new Set()));
+    });
+
+    it('a failed page check drops every article and records auth:confluence-check-failed', () => {
+      const out = filterBundleForViewer(withArticles(), new Set(['ITS-1', 'ITO-1', 'ITS-2']), null);
+      expect(out.articles).toEqual([]);
+      expect(out.failures).toEqual([AUTH_CONFLUENCE_CHECK_FAILED]);
+      expect(out.partial).toBe(true);
+      expect(filterBundleForViewer(stored({ articles: [] }), new Set(), null).failures).toEqual([]); // nothing to hide, no failure
+      // A bundle stored before step 10 has no articles field at all: nothing to hide either.
+      const old = filterBundleForViewer({ ...stored(), articles: undefined as never }, new Set(), null);
+      expect(old.articles).toEqual([]);
+      expect(old.failures).toEqual([]);
+    });
+
+    it('never treats a Jira key as a visible page, or a page ID as a visible Jira key', () => {
+      const b = stored({ articles: [{ ...article('ITS-1'), source: ref('ITS-1', 'jira-issue') }] });
+      expect(filterBundleForViewer(b, new Set(['ITS-1']), new Set(['ITS-1'])).articles).toEqual([]);
+    });
+
+    it('bundlePageIds lists every page the bundle would reveal: articles and pages the summary cites', () => {
+      const b = stored({
+        articles: [article('1'), article('2')],
+        summary: { generatedClaims: [
+          { claimId: 'a', text: 'x', citedSourceRef: ref('3', 'confluence-page') },
+          { claimId: 'b', text: 'y', citedSourceRef: ref('1', 'confluence-page') },
+          { claimId: 'c', text: 'z', citedSourceRef: ref('ITO-1') },
+          { claimId: 'd', text: 'w', citedSourceRef: null },
+        ] },
+      });
+      expect(bundlePageIds(b)).toEqual(['1', '2', '3']);
+      expect(bundlePageIds({ ...stored(), articles: undefined as never, summary: undefined })).toEqual([]);
+    });
+
+    it('withFailure adds a failure once and marks the response partial', () => {
+      const v = filterBundleForViewer(stored(), new Set());
+      const once = withFailure(v, AUTH_CONFLUENCE_CHECK_FAILED);
+      expect(once).toMatchObject({ failures: [AUTH_CONFLUENCE_CHECK_FAILED], partial: true });
+      expect(withFailure(once, AUTH_CONFLUENCE_CHECK_FAILED).failures).toEqual([AUTH_CONFLUENCE_CHECK_FAILED]);
+    });
   });
 
   it('does not treat a Confluence page ID as a visible Jira key', () => {

@@ -78,6 +78,14 @@ export function resolutionComponents(resolvedAt: string | undefined, semantic: n
   return { semantic, relationship, status: RESOLUTION_STATUS_WEIGHT, recency: recencyScore(resolvedAt, now), authority: RESOLUTION_AUTHORITY };
 }
 
+// Articles (§9.3, §9.4, §9.5): constant status weight, recency from source.updatedAt, authority by kind.
+export const ARTICLE_STATUS_WEIGHT = 0.2;
+export const ARTICLE_AUTHORITY = { runbook: 1.0, policy: 1.0, guide: 0.7 } as const;
+
+export function articleComponents(kind: keyof typeof ARTICLE_AUTHORITY, updatedAt: string | undefined, semantic: number, now: Date, relationship = 0): ScoreComponents {
+  return { semantic, relationship, status: ARTICLE_STATUS_WEIGHT, recency: recencyScore(updatedAt, now), authority: ARTICLE_AUTHORITY[kind] };
+}
+
 // Scores closer than this count as equal. Weighted sums of decimals carry floating-point noise
 // (0.1 * 0.2 + 0.1 * 0.6 differs from 0.1 * 0.6 + 0.1 * 0.2 in the last bits); without a tolerance that
 // noise, not the documented tie-breakers, would decide the order of equally scored items.

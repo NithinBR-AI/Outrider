@@ -34,6 +34,8 @@ export type Article = {
   source: SourceRef;
   excerpt: string;
   kind: 'runbook' | 'policy' | 'guide';
+  // 0..1 match strength, as for incidents and resolutions (panel relevance indicator, MCP relevance).
+  relevance: number;
 };
 
 export type ServiceLink = {

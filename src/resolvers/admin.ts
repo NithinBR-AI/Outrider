@@ -5,7 +5,7 @@
 // Everything here runs as the app: the page lists the projects and fields Outrider itself can see, so an
 // admin can only choose projects the app can actually search.
 import Resolver from '@forge/resolver';
-import { getSettings, listFields, listProjects, ProjectOption, saveSettings, SaveResult } from '../adapters/settings';
+import { getSettings, listFields, listProjects, listSpaces, ProjectOption, saveSettings, SaveResult, SpaceOption } from '../adapters/settings';
 import { AFFECTED_SERVICES_FIELD_TYPE, detectFields, fieldsOfType, REQUEST_TYPE_FIELD_TYPE, SettingsInput, SiteSettings } from '../domain/settings';
 
 export type FieldOption = { id: string; name: string };
@@ -18,16 +18,33 @@ export type SettingsPageData =
       projectsTruncated: boolean;
       fieldOptions: { affectedServices: FieldOption[]; requestType: FieldOption[] };
       detected: { affectedServicesField?: string; requestTypeField?: string };
+      // Confluence is optional: if its spaces cannot be listed (for example Outrider is not installed in
+      // Confluence on this site), the rest of the page still works and spacesError says why.
+      spaces: SpaceOption[];
+      spacesError?: string;
     }
   | { ok: false; message: string };
+
+export const SPACES_UNAVAILABLE =
+  'Confluence spaces could not be listed. Knowledge articles need Outrider installed in Confluence on this site. The other settings still work.';
 
 const toOption = (f: { id: string; name?: string }): FieldOption => ({ id: f.id, name: f.name ?? f.id });
 
 /** Everything the settings page needs in one call. Exported for tests. */
 export async function loadSettingsPage(): Promise<SettingsPageData> {
   try {
-    const [settings, projectList, fields] = await Promise.all([getSettings(), listProjects(), listFields()]);
+    const [settings, projectList, fields, spaceList] = await Promise.all([
+      getSettings(),
+      listProjects(),
+      listFields(),
+      listSpaces().catch((err) => {
+        console.error('settings page: Confluence spaces could not be listed', err);
+        return null;
+      }),
+    ]);
     return {
+      spaces: spaceList?.spaces ?? [],
+      ...(spaceList ? {} : { spacesError: SPACES_UNAVAILABLE }),
       ok: true,
       settings,
       projects: projectList.projects,

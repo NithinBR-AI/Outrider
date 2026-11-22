@@ -51,6 +51,21 @@ const IncidentItem = ({ incident }) => (
   </Box>
 );
 
+const ARTICLE_KIND_LABEL = { runbook: 'Runbook', policy: 'Policy', guide: 'Guide' };
+
+const ArticleItem = ({ article }) => (
+  <Box paddingBlock="space.100">
+    <Stack space="space.050">
+      <Box>
+        <Lozenge appearance="new">{ARTICLE_KIND_LABEL[article.kind] ?? article.kind}</Lozenge>
+      </Box>
+      <Link href={article.source.url} openNewTab>{article.source.title}</Link>
+      {article.excerpt ? <Text>{article.excerpt}</Text> : null}
+      <ItemMeta relevance={article.relevance} label="Updated" iso={article.source.updatedAt} />
+    </Stack>
+  </Box>
+);
+
 const ResolutionItem = ({ resolution }) => (
   <Box paddingBlock="space.100">
     <Stack space="space.050">
@@ -131,12 +146,24 @@ const Summary = ({ summary }) => {
 };
 
 // Empty sections stay visible so the viewer can see the section was evaluated (spec §17.2).
-const Section = ({ title, items, render }) => (
-  <Stack space="space.050">
-    <Heading size="small">{title}</Heading>
-    {items.length === 0 ? <Text color="color.text.subtlest">No items</Text> : items.map(render)}
-  </Stack>
-);
+// Each section with items has its own Show less / Show more toggle. Sections start expanded: the panel exists to
+// surface context, so the viewer collapses what they don't need. There is no "collapse all".
+const Section = ({ title, items, render }) => {
+  const [open, setOpen] = useState(true);
+  return (
+    <Stack space="space.050">
+      <Inline spread="space-between" alignBlock="center">
+        <Heading size="small">{title}</Heading>
+        {items.length > 0 ? (
+          <Button appearance="subtle" spacing="compact" onClick={() => setOpen(!open)}>
+            {open ? 'Show less' : 'Show more'}
+          </Button>
+        ) : null}
+      </Inline>
+      {items.length === 0 ? <Text color="color.text.subtlest">No items</Text> : open ? items.map(render) : null}
+    </Stack>
+  );
+};
 
 const Bundle = ({ bundle }) => (
   <Stack space="space.200">
@@ -147,6 +174,7 @@ const Bundle = ({ bundle }) => (
     {bundle.summary && bundle.summary.claims && bundle.summary.claims.length > 0 ? <Summary summary={bundle.summary} /> : null}
     <Section title="Active and recent incidents" items={bundle.incidents} render={(i) => <IncidentItem key={i.source.id} incident={i} />} />
     <Section title="Past resolutions" items={bundle.resolutions} render={(r) => <ResolutionItem key={r.source.id} resolution={r} />} />
+    <Section title="Knowledge articles" items={bundle.articles ?? []} render={(a) => <ArticleItem key={a.source.id} article={a} />} />
   </Stack>
 );
 

@@ -94,3 +94,19 @@ describe('isBundleTicket', () => {
     expect(NOT_SET_UP_MESSAGE).toBe("Outrider isn't set up for this project yet. Ask a Jira admin to configure it.");
   });
 });
+
+describe('Confluence spaces setting (step 10)', () => {
+  it('is optional, normalized like project keys, and left out when empty', () => {
+    expect(parseSettings({ bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: [' ito ', 'ITO', 'kb'] })).toEqual({
+      settings: { bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: ['ITO', 'KB'] },
+    });
+    expect(parseSettings({ bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: [] })).toEqual({ settings: { bundleProjects: ['ITS'], sourceProjects: ['ITS'] } });
+  });
+
+  it('rejects personal spaces and anything that is not a space key, naming it, and caps the list', () => {
+    expect(parseSettings({ bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: ['~600a7834'] })).toEqual({ error: 'Confluence spaces: "~600A7834" is not a Confluence space key.' });
+    expect(parseSettings({ bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: ['IT O'] })).toMatchObject({ error: expect.stringContaining('"IT O"') });
+    const many = Array.from({ length: MAX_PROJECTS + 1 }, (_, n) => `S${n}`);
+    expect(parseSettings({ bundleProjects: ['ITS'], sourceProjects: ['ITS'], confluenceSpaces: many })).toEqual({ error: `Confluence spaces: choose at most ${MAX_PROJECTS} spaces.` });
+  });
+});
