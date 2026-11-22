@@ -510,6 +510,22 @@ Tickets in a project you remove show "isn't set up" again; their stored context 
 Verified on two sites: the demo site (`ITS` / `ITS`, `ITO`; fields `customfield_10039` and `customfield_10010`
 detected) and a second site set up only through this page (`DEMO`, `OD`; Affected services detected as
 `customfield_10048`), where an `OD` ticket then showed the related incident `OD-5` and a live summary.
+## Design and decisions
+
+Outrider was specified before it was built. [`docs/spec.md`](docs/spec.md) is that specification: the data model,
+the source-span verifier, read-time authorization, ranking, failure handling, the required security tests, and the
+build sequence and cut order.
+
+As each step was built, the spec gained a **"Decisions made during implementation"** section for that phase,
+recording where reality changed the plan and why, usually with a measurement. Examples:
+
+- Teamwork Graph moved to read time only, after a probe showed the build queue cannot call it.
+- The embeddings provider was chosen by checking each provider's own pricing and terms pages.
+- The article and incident floors were set from scores measured on recorded demo-site data.
+
+Some parts of the spec were not built, for example the Confluence index and request clustering. **This README is
+the authority on what the submission does**; the spec explains why it works the way it does.
+
 ## Architecture
 
 ```
