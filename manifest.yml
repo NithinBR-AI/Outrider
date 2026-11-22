@@ -137,9 +137,16 @@ permissions:
     fetch:
       backend:
         - remote: bedrock-mantle
+        # Step 12: embeddings for ranking (Jina AI), from the build job only.
+        - remote: jina
 remotes:
   # Must match MANTLE_BASE_URL in src/adapters/mantle.ts.
   - key: bedrock-mantle
     baseUrl: https://bedrock-mantle.us-east-1.api.aws
+    operations:
+      - fetch
+  # Must match JINA_BASE_URL in src/adapters/jina.ts.
+  - key: jina
+    baseUrl: https://api.jina.ai
     operations:
       - fetch

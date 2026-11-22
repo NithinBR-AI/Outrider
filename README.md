@@ -10,7 +10,7 @@ Built on Atlassian Forge for Codegeist 2026.
 
 - Adds an **Outrider** panel to every JSM issue showing source-grounded context
 - Retrieves related incidents and past resolutions from Jira
-- Retrieves relevant runbook and KB articles from Confluence
+- Retrieves relevant runbook and KB articles from Confluence, ranked with keywords and embeddings
 - Gates every AI-generated summary claim against a verbatim source span — unsupported claims are dropped and counted
 - Shows the teams linked (in Atlassian Teams) to the projects of related incidents, via Teamwork Graph
 - Exposes the same context bundle via Rovo MCP tools for AI agents
@@ -37,7 +37,8 @@ Built on Atlassian Forge for Codegeist 2026.
 | 9.5 | Per-site settings page (projects, detected fields), "isn't set up" state, no hardcoded projects or fields; verified on the demo site and a second site | ✅ (development) |
 | 10 | Knowledge articles from Confluence (live search, rarity-weighted matching, read-time check as the viewer), spaces on the settings page, articles as summary sources; verified with two users on the demo site | ✅ (development) |
 | 11 | Teams involved via Teamwork Graph, looked up as the viewer at read time (team linked to the project of a related incident), in the panel and `get-ticket-context`; verified with two users on the demo site | ✅ (development) |
-| 12–14 | Embeddings, clustering, demo | 🔜 |
+| 12 | Embedding ranking with Jina (`jina-embeddings-v5-text-small`): keywords choose candidates, embeddings re-rank them and drop weak incidents and runbooks; keyword fallback; verified on ITS-6265 and ITS-6267 | ✅ (development) |
+| 13–14 | Clustering, production and demo | 🔜 |
 
 ## Install
 
@@ -144,11 +145,16 @@ forge install -p Jira -s <your-site>.atlassian.net -e production
 forge install -p Confluence -s <your-site>.atlassian.net -e production
 ```
 
-Set the Amazon Bedrock API key once per environment, before deploying (encrypted; never commit it):
+Set both API keys once per environment, before deploying (encrypted; never commit them). Both are already set in
+development; **production still needs both** before the production deploy:
 
 ```
-forge variables set --encrypt -e production MANTLE_API_KEY
+forge variables set --encrypt -e production MANTLE_API_KEY   # Amazon Bedrock (Mantle): summaries
+forge variables set --encrypt -e production JINA_API_KEY     # Jina AI: embeddings for ranking
 ```
+
+Without `MANTLE_API_KEY` there is no summary; without `JINA_API_KEY` ranking falls back to keywords. Neither stops
+a build. Development and production share one Jina key, so its free tokens (10M, one-time) cover both.
 
 After adding new scopes or egress, upgrade each product's install separately:
 
@@ -209,17 +215,32 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 
 ## Data sent outside Atlassian
 
-Outrider calls one external service: **Amazon Bedrock (AWS us-east-1)** at `bedrock-mantle.us-east-1.api.aws`,
-to generate summaries. The install screen lists this domain.
+Outrider calls two external services. The install screen lists both domains.
 
-- **Sent:** the ticket's summary and description, and the stored excerpts and titles of its related incidents,
-  past resolutions and knowledge articles (Confluence runbook and page excerpts, up to 600 characters each), with
-  emails and links replaced by placeholders. Full page bodies are never sent or stored.
-- **Not sent:** account IDs, user fields such as reporter or assignee, ticket keys, page IDs, or links to Jira or Confluence. Text inside
-  a ticket is sent as written apart from emails and links, so a name typed into a description is included.
-- **When:** only during a context build, when the content above changed. Never when the panel opens or MCP is called.
-- **Credential:** an Amazon Bedrock API key stored as an encrypted Forge environment variable. It is never in
-  code, logs or responses, and judges do not need to provide one.
+| Service | Domain | Used for |
+|---|---|---|
+| **Amazon Bedrock (AWS us-east-1)** | `bedrock-mantle.us-east-1.api.aws` | Generating summaries |
+| **Jina AI (part of Elastic)** | `api.jina.ai` | Embeddings for ranking (`jina-embeddings-v5-text-small`) |
+
+- **Sent to Bedrock:** the ticket's summary and description, and the stored excerpts and titles of its related
+  incidents, past resolutions and knowledge articles (Confluence runbook and page excerpts, up to 600 characters
+  each).
+- **Sent to Jina:** the ticket's summary and description, and the title and stored excerpt of each candidate
+  incident, past resolution and knowledge article, each cut to 600 characters. Candidates later dropped by
+  ranking are sent too (at most 30 per build).
+- **For both:** emails and links are replaced by placeholders, and full page bodies are never sent or stored.
+- **Not sent:** account IDs, user fields such as reporter or assignee, ticket keys, page IDs, or links to Jira or
+  Confluence. Text inside a ticket is sent as written apart from emails and links, so a name typed into a
+  description is included.
+- **Training:** Jina's FAQ states: "We never use your API requests, inputs, or outputs to train our embedding,
+  reranker, or any other models." Amazon Bedrock does not use inputs to train models.
+- **When:** only during a context build. Bedrock is called only when the content above changed; Jina once per
+  build. Neither is called when the panel opens or MCP is called.
+- **Credentials:** an Amazon Bedrock API key and a Jina API key, stored as encrypted Forge environment variables.
+  They are never in code, logs or responses, and judges do not need to provide either.
+- **Jina's free tokens:** the Jina key uses Jina's free allowance (10M tokens, one-time). A build uses about
+  400–800 tokens on the demo site. When the tokens run out, or Jina is unreachable, ranking falls back to
+  keywords and nothing else changes.
 
 ## How context is chosen
 
@@ -232,6 +253,18 @@ to generate summaries. The install screen lists this domain.
 - **Ranking:** a fixed formula weighs similarity (35%), relationship (25%), status (20%, active above resolved),
   recency (10%, 30-day half-life) and source authority (10%). Ties are broken by a shared Affected service,
   then recency, then source key, so the same data always gives the same order.
+- **Embeddings (step 12):** keywords choose the candidates; embeddings then judge how close each one is to the
+  ticket.
+  - One batched call to Jina per build embeds the ticket and its candidates. Each candidate's similarity
+    (cosine) becomes the similarity part of the formula, and every section is re-ranked.
+  - Incidents and knowledge articles are kept only if they reach at least 60% of the best one's similarity in
+    their section. Past resolutions are only re-ordered, because a same-requester match need not be similar.
+  - The build log shows the result, as `embeddings for <ticket>: <n> candidate(s), <n> tokens, <n> ms, below the
+    floor: <n> article(s), <n> incident(s)`.
+  - If Jina fails, times out or has no tokens left, the build keeps the keyword ranking. This is logged only; the
+    panel shows nothing about it.
+  - The find tools stay on keywords: they search live on every call, and an extra service call per Rovo question
+    was not worth it.
 - **Knowledge articles:** searched live in the configured Confluence spaces during each build; there is no index.
   - **Search:** one CQL search as the app for any of the ticket's 8 strongest keywords (up to 25 pages). If CQL
     finds nothing or fails, Outrider lists the most recently modified pages in those spaces instead. The build
@@ -247,11 +280,16 @@ to generate summaries. The install screen lists this domain.
   excerpts (up to 600 characters) are stored, never full page text.
 - **Staleness:** each bundle records a fingerprint of the ticket fields that affect retrieval. If the ticket changes
   while a build runs, the result is discarded and a fresh build is queued.
-- **Current deviations, by design:** keyword overlap stands in for semantic similarity until embeddings are added,
-  and relationship strength stays 0: Teamwork Graph is used for the Teams involved section, not for ranking.
-- **Known limit of keyword matching for articles:** pages that share a generic word with the ticket can still
-  tie. For the VPN ticket ITS-6267 the VPN runbook ranks first, but the Auth and Database runbooks are also kept
-  (86% of its score) because they contain "connect" and "connection". Embeddings are planned to resolve this.
+- **Current deviations, by design:** when embeddings are unavailable, keyword overlap stands in for semantic
+  similarity, rather than the spec's 0, so the ranking stays as good as before. Relationship strength stays 0:
+  Teamwork Graph is used for the Teams involved section, not for ranking.
+- **What embeddings fixed, verified on the demo site:** with keywords alone, the VPN ticket ITS-6267 also showed
+  the Auth and Database runbooks (86% of the VPN runbook's keyword score, through "connect" and "connection") and
+  the unrelated database incident ITO-9648. With embeddings those score 42–55% of the best match and are dropped:
+  ITS-6267 now shows only the VPN runbook and the VPN incident ITO-9649. ITS-6265 still shows the Auth runbook
+  and ITO-9647.
+- **Why keywords still choose the candidates:** used alone, embeddings rated an unrelated "web 404 error"
+  postmortem at 89% of the Auth runbook for the login ticket. The keyword gate never lets it in.
 
 ## Teams involved (Teamwork Graph)
 
@@ -342,6 +380,12 @@ to generate summaries. The install screen lists this domain.
   Platform Support, the other gets no team and causes no call), a fresh lookup on every read, revoked access, a
   failed lookup, that teams are never stored, and MCP per caller. Other read-path suites mock Teamwork Graph
   explicitly as "no linked teams".
+- Embedding ranking is tested on real `jina-embeddings-v5-text-small` vectors recorded once from the demo-site
+  fixtures (`tests/fixtures/jina-demo-site.json`, 1024 dimensions): the VPN ticket keeps only the VPN runbook and
+  the VPN incident, the login ticket keeps the Auth runbook and the login incidents, and embeddings alone would
+  keep the 404 postmortem (why the keyword gate stays). The Jina adapter is tested with `fetch` mocked: request
+  shape, strict response checks, timeouts and errors, and no call without a key. The builder tests cover the
+  re-ranking and the keyword fallback. CI never calls Jina.
 - Domain logic (`src/domain`) is held at 100% branch coverage; `npm run coverage` enforces it.
 
 ## Set up Outrider
@@ -469,15 +513,15 @@ detected) and a second site set up only through this page (`DEMO`, `OD`; Affecte
 ## Architecture
 
 ```
-Jira event → Queue → Consumer → (Amazon Bedrock: summary claims) → ContextBundle (KVS) → JSM Panel
-                                                                                       → Rovo MCP tools
+Jira event → Queue → Consumer → (Jina: embeddings for ranking) → (Amazon Bedrock: summary claims) → ContextBundle (KVS) → JSM Panel
+                                                                                                                        → Rovo MCP tools
 Read time, as the viewer: Jira and Confluence visibility, live text for the verifier, Teamwork Graph teams
 ```
 
 | Folder | Contents |
 |---|---|
 | `src/domain` | Pure types, text matching, verification, prompt building, ranking and fingerprint logic, no Forge imports |
-| `src/adapters` | Jira and Confluence REST calls, Teamwork Graph queries, the Amazon Bedrock (Mantle) call, and KVS storage |
+| `src/adapters` | Jira and Confluence REST calls, Teamwork Graph queries, the Jina embeddings call, the Amazon Bedrock (Mantle) call, and KVS storage |
 | `src/pipeline` | Event handler, queue consumer, job routing, bundle builder |
 | `src/resolvers` | Panel resolver and MCP action handlers |
 | `src/frontend` | UI Kit panel |

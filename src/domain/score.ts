@@ -1,9 +1,9 @@
 // Deterministic ranking (spec §9). Pure: no Forge imports, no I/O, no clock reads ("now" is passed in).
 //
 // Documented deviations, agreed for step 6b:
-//   - semanticSimilarity: embeddings do not exist yet (step 12), so the keyword overlap from
-//     domain/extract.ts stands in for the cosine similarity. It goes through normalizeCosine like any
-//     cosine value would. When embeddings land, the real cosine replaces it.
+//   - semanticSimilarity: the adapters rank by keyword overlap (domain/extract.ts) through normalizeCosine.
+//     With embeddings (step 12, domain/embeddings.ts) the builder re-ranks with the real cosine; the keyword
+//     overlap remains the fallback when embeddings are unavailable.
 //   - relationshipStrength: stays 0 until Teamwork Graph confirms relationships (step 11). A shared
 //     Jira "Affected services" value is only a tie-breaker in the ordering, never part of the score.
 

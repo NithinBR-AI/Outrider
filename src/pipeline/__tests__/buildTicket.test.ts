@@ -1,6 +1,6 @@
 // Ticket builder tests (spec §8.3, §19.2): failure isolation, duplicate delivery, stale results.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BuildStatus, ContextBundle, Incident, Resolution, Ticket } from '../../domain/types';
+import { Article, BuildStatus, ContextBundle, Incident, Resolution, Ticket } from '../../domain/types';
 
 const h = vi.hoisted(() => ({
   store: new Map<string, unknown>(),
@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   requeueTicketJob: vi.fn(),
   generateClaims: vi.fn(),
   searchArticles: vi.fn(),
+  embedTicketAndCandidates: vi.fn(),
 }));
 
 // In-memory KVS: FAIL_IF_EXISTS rejects when the key exists; expired keys are not removed.
@@ -33,6 +34,8 @@ vi.mock('../enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild, requeue
 // No network: the model call is mocked; the adapter has its own tests (adapters/__tests__/mantle.test.ts).
 vi.mock('../../adapters/mantle', () => ({ generateClaims: h.generateClaims }));
 vi.mock('../../adapters/confluence', () => ({ searchArticles: h.searchArticles }));
+// Embeddings (step 12): unavailable by default, so the keyword ranking is used; the embeddings block below covers them.
+vi.mock('../../adapters/jina', () => ({ embedTicketAndCandidates: h.embedTicketAndCandidates }));
 
 import { buildTicketBundle } from '../buildTicket';
 import { ticketFingerprint } from '../../domain/extract';
@@ -56,6 +59,7 @@ beforeEach(() => {
   h.enqueueTicketBuild.mockReset().mockResolvedValue({ buildId: 'build-next', requestedAt: 'r2' });
   h.requeueTicketJob.mockReset().mockResolvedValue(undefined);
   h.searchArticles.mockReset().mockResolvedValue([]);
+  h.embedTicketAndCandidates.mockReset().mockRejectedValue(new Error('embedding-no-key'));
   h.generateClaims.mockReset().mockResolvedValue({
     claims: [{ claimId: 'llm-1-abc', text: 'The auth service is returning 503 errors.', citedSourceRef: ref('ITO-1') }],
     model: 'qwen.qwen3-235b-a22b-2507',
@@ -471,5 +475,51 @@ describe('knowledge articles (step 10)', () => {
     expect(bundle()!.incidents).toHaveLength(1);
     expect(bundle()!.failures).toEqual(['confluence-articles']);
     expect(bundle()!.partial).toBe(true);
+  });
+});
+
+describe('embeddings (step 12)', () => {
+  const article = (id: string, title: string): Article => ({ source: { kind: 'confluence-page', id, url: `https://x/wiki/${id}`, title, updatedAt: '2026-11-01T00:00:00Z' }, excerpt: 'e', kind: 'runbook', relevance: 0.5 });
+  // Unit vectors at chosen angles from the ticket vector [1, 0]: the cosine is the first component.
+  const at = (c: number) => [c, Math.sqrt(1 - c * c)];
+
+  it('re-ranks with embedding similarity, drops articles below the floor, and sends minimized text', async () => {
+    setStatus({});
+    h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], confluenceSpaces: ['ITO'], savedAt: 't' });
+    h.getTicket.mockResolvedValue({ ...ticket, description: 'Mail me at a@b.com' });
+    h.searchIncidents.mockResolvedValue([incident('ITO-1'), incident('ITO-3')]);
+    h.searchArticles.mockResolvedValue([article('1', 'Auth runbook'), article('2', 'VPN runbook')]);
+    // Order sent: incidents, resolutions, articles. ITO-3 is closer than ITO-1 (75% of it, above the floor); the Auth runbook
+    // is below 60% of the VPN one.
+    h.embedTicketAndCandidates.mockResolvedValue({ ticket: [1, 0], candidates: [at(0.6), at(0.8), at(0.5), at(0.2), at(0.7)], tokens: 321 });
+    await buildTicketBundle(job());
+    const [ticketText, texts] = h.embedTicketAndCandidates.mock.calls[0];
+    expect(ticketText).toBe('Cannot log in Mail me at [email]');
+    expect(texts).toEqual(['ITO-1 s', 'ITO-3 s', 'ITO-2 Root cause: x', 'Auth runbook e', 'VPN runbook e']);
+    const b = bundle()!;
+    expect(b.incidents.map((i) => i.source.id)).toEqual(['ITO-3', 'ITO-1']);
+    expect(b.articles.map((a) => a.source.id)).toEqual(['2']);
+    expect(b.partial).toBe(false);
+  });
+
+  it('keeps the keyword ranking when embeddings fail, without marking the bundle partial (spec 12.5)', async () => {
+    setStatus({});
+    h.searchIncidents.mockResolvedValue([incident('ITO-1'), incident('ITO-3')]);
+    h.embedTicketAndCandidates.mockRejectedValue(new Error('embedding-http-429'));
+    await buildTicketBundle(job());
+    const b = bundle()!;
+    expect(b.incidents.map((i) => i.source.id)).toEqual(['ITO-1', 'ITO-3']);
+    expect(b.partial).toBe(false);
+    expect(b.failures).toEqual([]);
+    expect(status().status).toBe('complete');
+  });
+
+  it('makes no embedding call when there are no candidates', async () => {
+    setStatus({});
+    h.searchIncidents.mockResolvedValue([]);
+    h.searchResolutions.mockResolvedValue([]);
+    await buildTicketBundle(job());
+    expect(h.embedTicketAndCandidates).not.toHaveBeenCalled();
+    expect(status().status).toBe('complete');
   });
 });
