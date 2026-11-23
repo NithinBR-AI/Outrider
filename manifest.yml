@@ -27,6 +27,7 @@ modules:
         - get-ticket-context
         - find-related-incidents
         - find-similar-resolutions
+        - get-emerging-incidents
 
   action:
     - key: get-ticket-context
@@ -73,6 +74,17 @@ modules:
           type: string
           required: false
 
+    - key: get-emerging-incidents
+      name: Get emerging incidents
+      function: getEmergingIncidents
+      actionVerb: GET
+      description: List possible emerging incidents, where several open requests in a project report the same affected service and/or component within a short window. Advisory only; returns only requests the caller can see.
+      inputs:
+        projectKey:
+          title: Project key
+          description: The Jira project key, e.g. ITS. Optional; without it, every project Outrider builds context for.
+          type: string
+          required: false
   trigger:
     - key: jira-issue-events
       function: onJiraIssueEvent
@@ -80,6 +92,11 @@ modules:
         - avi:jira:created:issue
         - avi:jira:updated:issue
 
+  # Step 13: hourly clustering sweep, so emerging-incident signals expire on time even when nothing changes.
+  scheduledTrigger:
+    - key: cluster-sweep
+      function: clusterSweep
+      interval: hour
   consumer:
     - key: outrider-build-consumer
       queue: outrider-build-queue
@@ -100,6 +117,10 @@ modules:
 
     - key: onJiraIssueEvent
       handler: index.onJiraIssueEvent
+    - key: getEmergingIncidents
+      handler: index.getEmergingIncidents
+    - key: clusterSweep
+      handler: index.onClusterSweep
 
     - key: buildJob
       handler: index.buildJob

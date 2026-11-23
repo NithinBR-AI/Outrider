@@ -1,7 +1,8 @@
 // KVS storage for bundles, build status and per-ticket locks (spec §18).
 // Keys are namespaced: bundle:<ticketKey>, status:<ticketKey>, lock:<ticketKey>.
-import { kvs } from '@forge/kvs';
+import { kvs, WhereConditions } from '@forge/kvs';
 import { BuildStatus, ContextBundle } from '../domain/types';
+import { ClusterRecord, clusterKeyPrefix } from '../domain/cluster';
 
 const bundleKey = (ticketKey: string) => `bundle:${ticketKey}`;
 const statusKey = (ticketKey: string) => `status:${ticketKey}`;
@@ -49,7 +50,7 @@ const LOCK_TTL = { unit: 'SECONDS' as const, value: LOCK_LEASE_SECONDS };
  * acquisition holds an unexpired lease. An expired lease (for example from a crashed consumer) is
  * taken over.
  */
-export async function acquireLock(ticketKey: string, buildId: string, ownerToken: string, now: Date = new Date()): Promise<LockRecord | undefined> {
+export async function acquireLock(ticketKey: string, buildId: string, ownerToken: string, now: Date = new Date(), retried = false): Promise<LockRecord | undefined> {
   const record = newLock(buildId, ownerToken, now);
   try {
     await kvs.set(lockKey(ticketKey), record, { keyPolicy: 'FAIL_IF_EXISTS', ttl: LOCK_TTL });
@@ -60,7 +61,13 @@ export async function acquireLock(ticketKey: string, buildId: string, ownerToken
     // leaves the stored value unchanged; ttl and keyPolicy are both honored in one call.
     // Deciding by re-reading the key keeps this correct even if the error shape changes.
     const existing = await getLock(ticketKey);
-    if (!existing) throw err; // Not a conflict: a real storage error.
+    // No lock now: either the holder released it between the write and the read (seen live on 2026-11-23,
+    // "Provided key already exists and cannot be overwritten" with no lock left), or it was a real storage
+    // error. One more attempt settles the first case; a second failure is treated as a real error.
+    if (!existing) {
+      if (retried) throw err;
+      return acquireLock(ticketKey, buildId, ownerToken, now, true);
+    }
     if (Date.parse(existing.expiresAt) > now.getTime()) return undefined; // Held by someone else.
     // Expired lease: take it over (best-effort, see above).
     await kvs.set(lockKey(ticketKey), record, { ttl: LOCK_TTL });
@@ -80,6 +87,36 @@ export async function releaseLock(ticketKey: string, ownerToken: string): Promis
   if (!current || current.ownerToken !== ownerToken) return false;
   await kvs.delete(lockKey(ticketKey));
   return true;
+}
+
+// ---- Cluster records (step 13, spec §18.7): one KVS key per signal, the encoded cluster key itself. ----
+
+const CLUSTER_PAGE = 100;
+
+/** Every stored cluster record of one project (active, resolved and recently expired). */
+export async function listClusterRecords(projectKey: string): Promise<ClusterRecord[]> {
+  const out: ClusterRecord[] = [];
+  let cursor: string | undefined;
+  do {
+    let q = kvs.query().where('key', WhereConditions.beginsWith(clusterKeyPrefix(projectKey))).limit(CLUSTER_PAGE);
+    if (cursor) q = q.cursor(cursor);
+    const page = await q.getMany<ClusterRecord>();
+    for (const r of page.results) out.push(r.value);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return out;
+}
+
+export async function getClusterRecord(storageKey: string): Promise<ClusterRecord | undefined> {
+  return kvs.get<ClusterRecord>(storageKey);
+}
+
+export async function putClusterRecord(record: ClusterRecord): Promise<void> {
+  await kvs.set(record.storageKey, record);
+}
+
+export async function deleteClusterRecord(storageKey: string): Promise<void> {
+  await kvs.delete(storageKey);
 }
 
 export async function getBundle(ticketKey: string): Promise<ContextBundle | undefined> {

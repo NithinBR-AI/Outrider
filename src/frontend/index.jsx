@@ -62,10 +62,21 @@ const TeamItem = ({ team }) => (
   </Box>
 );
 
-// Must match TWG_UNAVAILABLE in src/domain/teams.ts.
+// Must match TWG_UNAVAILABLE and TWG_PARTIAL in src/domain/teams.ts.
 const TWG_UNAVAILABLE = 'twg:unavailable';
+const TWG_PARTIAL = 'twg:partial';
 const NO_TEAMS = "No teams linked to this project's space. Link a team to the project in Atlassian Teams to see it here.";
 const TEAMS_UNAVAILABLE = "Teams couldn't be checked right now.";
+// Some projects answered and some did not: never say "no team linked" for the ones that did not.
+const SOME_TEAMS_UNAVAILABLE = "Some teams couldn't be checked right now.";
+
+/** The Teams involved message when there are no teams to list, and the note under the list when there are. */
+const teamsMessages = (bundle) => {
+  const failures = bundle.failures ?? [];
+  if (failures.includes(TWG_UNAVAILABLE)) return { empty: TEAMS_UNAVAILABLE, note: null };
+  if (failures.includes(TWG_PARTIAL)) return { empty: SOME_TEAMS_UNAVAILABLE, note: SOME_TEAMS_UNAVAILABLE };
+  return { empty: (bundle.incidents ?? []).length === 0 ? NO_INCIDENTS_FOR_TEAMS : NO_TEAMS, note: null };
+};
 // Teams are looked up only from related incidents; with none, there is nothing to look up.
 const NO_INCIDENTS_FOR_TEAMS = 'No related incidents to look up teams for.';
 
@@ -166,7 +177,7 @@ const Summary = ({ summary }) => {
 // Empty sections stay visible so the viewer can see the section was evaluated (spec §17.2).
 // Each section with items has its own Show less / Show more toggle. Sections start expanded: the panel exists to
 // surface context, so the viewer collapses what they don't need. There is no "collapse all".
-const Section = ({ title, items, render, empty = 'No items' }) => {
+const Section = ({ title, items, render, empty = 'No items', note = null }) => {
   const [open, setOpen] = useState(true);
   return (
     <Stack space="space.050">
@@ -179,12 +190,64 @@ const Section = ({ title, items, render, empty = 'No items' }) => {
         ) : null}
       </Inline>
       {items.length === 0 ? <Text color="color.text.subtlest">{empty}</Text> : open ? items.map(render) : null}
+      {items.length > 0 && note ? <Text size="small" color="color.text.subtlest">{note}</Text> : null}
     </Stack>
   );
 };
 
-const Bundle = ({ bundle }) => (
+// ---- Emerging incident (spec §17.4, step 13) ----
+// Advisory only: the card recommends investigation and never creates, declares or assigns anything (§14.10).
+// The server sends only signals the viewer can see enough of; this component never filters.
+const SIGNAL_STATE_LABEL = { confirmed: 'Confirmed', uncertain: 'Uncertain' };
+const SIGNAL_REASON = {
+  'missing-entity-identity': 'These requests share a service, but at least one does not name a component, so the grouping is less certain.',
+  'missing-service-identity': 'These requests share a component, but at least one does not name an affected service, so the grouping is less certain.',
+};
+const ENTITY_LABEL = { asset: 'asset', component: 'component', endpoint: 'endpoint' };
+
+function signalHeadline(s) {
+  const service = s.serviceName ? `the same affected service, ${s.serviceName}` : s.serviceId ? 'the same affected service' : null;
+  const entity = s.entityId ? `the same ${ENTITY_LABEL[s.entityKind] ?? 'entity'}${s.entityName ? `, ${s.entityName}` : ''}` : null;
+  return `${s.requestCount} open requests report ${[service, entity].filter(Boolean).join(' and ')}.`;
+}
+
+const SignalCard = ({ signal, onDismissed }) => {
+  const siteUrl = useProductContext()?.siteUrl;
+  const [dismissing, setDismissing] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const dismiss = () => {
+    setDismissing(true);
+    setFailed(false);
+    invoke('dismissSignal', { signalId: signal.signalId })
+      .then((r) => (r?.ok ? onDismissed() : setFailed(true)))
+      .catch(() => setFailed(true))
+      .finally(() => setDismissing(false));
+  };
+  return (
+    <SectionMessage appearance="warning" title="Possible emerging incident">
+      <Stack space="space.100">
+        <Box>
+          <Lozenge appearance={signal.state === 'confirmed' ? 'removed' : 'moved'}>{SIGNAL_STATE_LABEL[signal.state] ?? signal.state}</Lozenge>
+        </Box>
+        <Text>{signalHeadline(signal)}</Text>
+        {signal.reason ? <Text size="small">{SIGNAL_REASON[signal.reason] ?? signal.reason}</Text> : null}
+        <Text size="small" color="color.text.subtlest">Created from {formatDate(signal.windowStart)}; this signal ends {formatDate(signal.windowEnd)}.</Text>
+        <Inline space="space.100" shouldWrap>
+          {signal.requestKeys.map((k) => (siteUrl ? <Link key={k} href={`${siteUrl}/browse/${k}`} openNewTab>{k}</Link> : <Text key={k}>{k}</Text>))}
+        </Inline>
+        <Text>Investigation recommended. Outrider does not create or declare an incident.</Text>
+        <Inline space="space.100" alignBlock="center">
+          <Button appearance="subtle" spacing="compact" onClick={dismiss} isDisabled={dismissing}>{dismissing ? 'Dismissing…' : 'Dismiss'}</Button>
+          {failed ? <Text size="small">Could not dismiss this signal. Try again.</Text> : null}
+        </Inline>
+      </Stack>
+    </SectionMessage>
+  );
+};
+
+const Bundle = ({ bundle, onRefresh }) => (
   <Stack space="space.200">
+    {(bundle.emergingSignals ?? []).map((s) => <SignalCard key={s.signalId} signal={s} onDismissed={onRefresh} />)}
     {bundle.partial ? (
       <SectionMessage appearance="warning"><Text>Some sources are unavailable.</Text></SectionMessage>
     ) : null}
@@ -192,7 +255,7 @@ const Bundle = ({ bundle }) => (
     {bundle.summary && bundle.summary.claims && bundle.summary.claims.length > 0 ? <Summary summary={bundle.summary} /> : null}
     <Section title="Active and recent incidents" items={bundle.incidents} render={(i) => <IncidentItem key={i.source.id} incident={i} />} />
     <Section title="Teams involved" items={bundle.teams ?? []} render={(t) => <TeamItem key={t.teamId} team={t} />}
-      empty={(bundle.failures ?? []).includes(TWG_UNAVAILABLE) ? TEAMS_UNAVAILABLE : (bundle.incidents ?? []).length === 0 ? NO_INCIDENTS_FOR_TEAMS : NO_TEAMS} />
+      empty={teamsMessages(bundle).empty} note={teamsMessages(bundle).note} />
     <Section title="Past resolutions" items={bundle.resolutions} render={(r) => <ResolutionItem key={r.source.id} resolution={r} />} />
     <Section title="Knowledge articles" items={bundle.articles ?? []} render={(a) => <ArticleItem key={a.source.id} article={a} />} />
   </Stack>
@@ -278,7 +341,7 @@ const App = () => {
           {result.bundle ? <Text><Strong>Showing the last available context, which may be out of date.</Strong></Text> : null}
         </SectionMessage>
       ) : null}
-      {result.bundle ? <Bundle bundle={result.bundle} /> : null}
+      {result.bundle ? <Bundle bundle={result.bundle} onRefresh={refresh} /> : null}
     </Stack>
   );
 };

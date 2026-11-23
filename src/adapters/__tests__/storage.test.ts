@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   store: new Map<string, unknown>(),
   setOptions: [] as { key: string; options?: Record<string, unknown> }[],
   failNextSet: null as null | Error,
+  failSetsAfter: [] as Error[],
 }));
 vi.mock('@forge/kvs', () => ({
   kvs: {
@@ -19,6 +20,8 @@ vi.mock('@forge/kvs', () => ({
         h.failNextSet = null;
         throw e;
       }
+      const queued = h.failSetsAfter.shift();
+      if (queued) throw queued;
       if (options?.keyPolicy === 'FAIL_IF_EXISTS' && h.store.has(key)) throw new Error('KVS conflict (code undocumented)');
       h.store.set(key, value);
     },
@@ -52,6 +55,7 @@ const T0 = new Date('2026-11-21T10:00:00.000Z');
 const later = (seconds: number) => new Date(T0.getTime() + seconds * 1000);
 
 beforeEach(() => {
+  h.failSetsAfter = [];
   h.store.clear();
   h.setOptions = [];
   h.failNextSet = null;
@@ -146,9 +150,20 @@ describe('per-ticket lock (spec §8.5)', () => {
     expect(await acquireLock('ITS-1', 'build-b', 'token-b', later(LOCK_LEASE_SECONDS - 1))).toBeUndefined();
   });
 
-  it('rethrows storage errors that are not a conflict', async () => {
+  it('rethrows a storage error that is not a conflict when the retry fails too', async () => {
     h.failNextSet = new Error('RATE_LIMIT_EXCEEDED');
+    h.failSetsAfter = [new Error('RATE_LIMIT_EXCEEDED')];
     await expect(acquireLock('ITS-1', 'build-a', 'token-a', T0)).rejects.toThrow('RATE_LIMIT_EXCEEDED');
+    expect(h.setOptions).toHaveLength(2);
+  });
+
+  it('acquires on the retry when the holder released the lock between the conflict and the re-read', async () => {
+    // Seen live: "Provided key already exists and cannot be overwritten", and no lock left when re-read.
+    h.failNextSet = new Error('Provided key already exists and cannot be overwritten');
+    const lock = await acquireLock('ITS-1', 'build-b', 'token-b', T0);
+    expect(lock?.ownerToken).toBe('token-b');
+    expect((await getLock('ITS-1'))!.ownerToken).toBe('token-b');
+    expect(h.setOptions.map((s) => s.options?.keyPolicy)).toEqual(['FAIL_IF_EXISTS', 'FAIL_IF_EXISTS']);
   });
 
   it('reports whether this acquisition still holds an unexpired lease', async () => {

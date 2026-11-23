@@ -2,7 +2,7 @@
 // Admins choose which projects get context and which are searched; the two custom fields are detected
 // and can be overridden. Saving is validated by the resolver; a rejected save changes nothing.
 import React, { useEffect, useState } from 'react';
-import ForgeReconciler, { Box, Heading, HelperMessage, Label, LoadingButton, SectionMessage, Select, Spinner, Stack, Text } from '@forge/react';
+import ForgeReconciler, { Box, Heading, HelperMessage, Icon, Inline, Label, LoadingButton, SectionMessage, Select, Spinner, Stack, Text, Textfield, Tooltip } from '@forge/react';
 import { invoke } from '@forge/bridge';
 
 const NOT_USED = { label: 'Not used', value: '' };
@@ -18,6 +18,29 @@ function fieldChoices(fields, current) {
 }
 
 const pick = (options, value) => options.find((o) => o.value === value) ?? NOT_USED;
+
+// What each setting is for, shown in a tooltip next to its label. The short text under each field stays,
+// because a tooltip is easy to miss. Keep these in line with the README "Set up Outrider" section.
+const HELP = {
+  bundleProjects: 'The service desks where agents should get help. On every ticket here, Outrider shows related incidents, past fixes, how-to articles and the teams involved. Example: your IT help desk.',
+  sourceProjects: 'Where Outrider looks for that help: past and current incidents, and tickets that were already solved. Usually the help desk itself plus the project your operations team logs incidents in.',
+  confluenceSpaces: 'The Confluence spaces with your how-to guides and runbooks. Outrider suggests the pages that fit the ticket. People only see pages they are already allowed to open.',
+  affectedServicesField: 'The ticket field that says which service is affected, such as Online Sales. Outrider uses it to tell which tickets are about the same thing.',
+  requestTypeField: 'The ticket field that says what kind of request it is. Outrider uses it to notice when a ticket has changed enough to refresh its help.',
+  clusterEntityField: 'The ticket field that names the affected part of a service, such as VPN Server. When several tickets name the same service and the same part, Outrider is more certain they are about one problem. Choose Not used to group by service only.',
+  clusterWindowMinutes: 'How close together, in minutes, the tickets must arrive to count as a possible emerging incident. The warning goes away when this time is up. Leave empty for 90 minutes.',
+  clusterThreshold: 'How many open tickets about the same thing it takes before Outrider warns that something bigger may be happening. Leave empty for 5.',
+};
+
+/** A field label with an info icon whose tooltip explains the setting. */
+const FieldLabel = ({ id, children }) => (
+  <Inline space="space.050" alignBlock="center">
+    <Label labelFor={id}>{children}</Label>
+    <Tooltip content={HELP[id]}>
+      <Icon glyph="info" label={`About: ${children}`} size="small" />
+    </Tooltip>
+  </Inline>
+);
 
 const App = () => {
   const [data, setData] = useState(null);
@@ -37,6 +60,9 @@ const App = () => {
         // Saved values win; otherwise pre-fill what was detected from the site's field types.
         affectedServicesField: s ? s.affectedServicesField ?? '' : d.detected.affectedServicesField ?? '',
         requestTypeField: s ? s.requestTypeField ?? '' : d.detected.requestTypeField ?? '',
+        clusterEntityField: s?.clusterEntityField ?? '',
+        clusterWindowMinutes: s?.clusterWindowMinutes === undefined ? '' : String(s.clusterWindowMinutes),
+        clusterThreshold: s?.clusterThreshold === undefined ? '' : String(s.clusterThreshold),
       });
     });
   }, []);
@@ -52,6 +78,7 @@ const App = () => {
   for (const key of form.confluenceSpaces) if (!spaceOptions.some((o) => o.value === key)) spaceOptions.push({ label: key, value: key });
   const servicesOptions = fieldChoices(data.fieldOptions.affectedServices, form.affectedServicesField);
   const requestOptions = fieldChoices(data.fieldOptions.requestType, form.requestTypeField);
+  const entityOptions = fieldChoices(data.fieldOptions.clusterEntity ?? [], form.clusterEntityField);
   const detectedNote = (key, value) => (value && value === data.detected[key] ? 'Detected automatically from this site\'s fields.' : null);
 
   const save = () => {
@@ -78,13 +105,13 @@ const App = () => {
       <Stack space="space.100">
         <Heading size="small">Projects</Heading>
         <Box>
-          <Label labelFor="bundleProjects">Projects whose tickets get context</Label>
+          <FieldLabel id="bundleProjects">Projects whose tickets get context</FieldLabel>
           <Select inputId="bundleProjects" isMulti options={projectOptions} value={chosen(form.bundleProjects)}
             onChange={(v) => setForm({ ...form, bundleProjects: (v ?? []).map((o) => o.value) })} />
           <HelperMessage>Usually your service desk projects. The Outrider panel shows context on these tickets.</HelperMessage>
         </Box>
         <Box>
-          <Label labelFor="sourceProjects">Projects to search for incidents and past resolutions</Label>
+          <FieldLabel id="sourceProjects">Projects to search for incidents and past resolutions</FieldLabel>
           <Select inputId="sourceProjects" isMulti options={projectOptions} value={chosen(form.sourceProjects)}
             onChange={(v) => setForm({ ...form, sourceProjects: (v ?? []).map((o) => o.value) })} />
           <HelperMessage>Include the service desk projects and any project where incidents are tracked. Incidents are issues of type [System] Incident.</HelperMessage>
@@ -98,7 +125,7 @@ const App = () => {
           <SectionMessage appearance="warning"><Text>{data.spacesError}</Text></SectionMessage>
         ) : null}
         <Box>
-          <Label labelFor="confluenceSpaces">Confluence spaces to search for runbooks and articles</Label>
+          <FieldLabel id="confluenceSpaces">Confluence spaces to search for runbooks and articles</FieldLabel>
           <Select inputId="confluenceSpaces" isMulti options={spaceOptions} value={spaceOptions.filter((o) => form.confluenceSpaces.includes(o.value))}
             onChange={(v) => setForm({ ...form, confluenceSpaces: (v ?? []).map((o) => o.value) })} />
           <HelperMessage>
@@ -112,16 +139,42 @@ const App = () => {
       <Stack space="space.100">
         <Heading size="small">Fields</Heading>
         <Box>
-          <Label labelFor="affectedServicesField">Affected services field</Label>
+          <FieldLabel id="affectedServicesField">Affected services field</FieldLabel>
           <Select inputId="affectedServicesField" options={servicesOptions} value={pick(servicesOptions, form.affectedServicesField)}
             onChange={(v) => setForm({ ...form, affectedServicesField: v?.value ?? '' })} />
           <HelperMessage>{detectedNote('affectedServicesField', form.affectedServicesField) ?? 'Used to break ties between equally relevant results. Optional.'}</HelperMessage>
         </Box>
         <Box>
-          <Label labelFor="requestTypeField">Request type field</Label>
+          <FieldLabel id="requestTypeField">Request type field</FieldLabel>
           <Select inputId="requestTypeField" options={requestOptions} value={pick(requestOptions, form.requestTypeField)}
             onChange={(v) => setForm({ ...form, requestTypeField: v?.value ?? '' })} />
           <HelperMessage>{detectedNote('requestTypeField', form.requestTypeField) ?? 'The Jira Service Management request type. Optional.'}</HelperMessage>
+        </Box>
+      </Stack>
+
+      <Stack space="space.100">
+        <Heading size="small">Emerging incidents (request clustering)</Heading>
+        <Text>
+          Outrider can flag when several open requests report the same service, and optionally the same component,
+          close together in time. A signal recommends investigation; Outrider never creates or declares an incident.
+        </Text>
+        <Box>
+          <FieldLabel id="clusterEntityField">Entity field for clustering</FieldLabel>
+          <Select inputId="clusterEntityField" options={entityOptions} value={pick(entityOptions, form.clusterEntityField)}
+            onChange={(v) => setForm({ ...form, clusterEntityField: v?.value ?? '' })} />
+          <HelperMessage>Optional. Components is the supported entity field. The service comes from the Affected services field above.</HelperMessage>
+        </Box>
+        <Box>
+          <FieldLabel id="clusterWindowMinutes">Clustering window (minutes)</FieldLabel>
+          <Textfield id="clusterWindowMinutes" type="number" placeholder="90" value={form.clusterWindowMinutes}
+            onChange={(e) => setForm({ ...form, clusterWindowMinutes: e.target.value })} />
+          <HelperMessage>Leave empty for the default, 90 minutes.</HelperMessage>
+        </Box>
+        <Box>
+          <FieldLabel id="clusterThreshold">Requests needed for a signal</FieldLabel>
+          <Textfield id="clusterThreshold" type="number" placeholder="5" value={form.clusterThreshold}
+            onChange={(e) => setForm({ ...form, clusterThreshold: e.target.value })} />
+          <HelperMessage>Leave empty for the default, 5 requests.</HelperMessage>
         </Box>
       </Stack>
 

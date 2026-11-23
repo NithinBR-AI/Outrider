@@ -53,6 +53,29 @@ export async function enqueueTicketBuild(ticketKey: string, actor: ActorContext)
   return { buildId, requestedAt };
 }
 
+// ---- Clustering passes (step 13) ----
+
+// A pass waits this long after a ticket event, so several requests created together are seen in one pass.
+export const CLUSTER_PASS_DELAY_SECONDS = 20;
+
+/** Queues one clustering pass for a project. Passes are idempotent; the per-project lock serializes them. */
+export async function enqueueClusterPass(projectKey: string, actor: ActorContext, delaySeconds = CLUSTER_PASS_DELAY_SECONDS): Promise<void> {
+  await queue.push({ body: { kind: 'cluster-pass', projectKey, buildId: randomUUID(), requestedAt: new Date().toISOString(), actor }, delayInSeconds: delaySeconds });
+}
+
+/** Re-queues a pass that found the project locked by another pass. */
+export async function requeueClusterJob(job: Extract<BuildJob, { kind: 'cluster-pass' }>, delaySeconds = LOCK_RETRY_DELAY_SECONDS): Promise<void> {
+  await queue.push({ body: job, delayInSeconds: delaySeconds });
+}
+
+/** Hourly scheduled trigger (manifest: cluster-sweep): one pass per context project, so signals expire on time. */
+export async function onClusterSweep(): Promise<void> {
+  const settings = await getSettings();
+  if (!settings || (!settings.affectedServicesField && !settings.clusterEntityField)) return;
+  for (const projectKey of settings.bundleProjects) await enqueueClusterPass(projectKey, { source: 'unknown' }, 0);
+  console.log(`cluster sweep queued ${settings.bundleProjects.length} pass(es)`);
+}
+
 export async function onJiraIssueEvent(event: JiraIssueEvent): Promise<void> {
   // Ignore events caused by this app to avoid loops (spec §5.4).
   if (event.selfGenerated) return;
@@ -62,9 +85,15 @@ export async function onJiraIssueEvent(event: JiraIssueEvent): Promise<void> {
     console.warn(`jira event ${event.eventType ?? 'unknown'} without issue key, skipped`);
     return;
   }
-  if (!isBundleTicket(await getSettings(), ticketKey)) return;
+  const settings = await getSettings();
+  if (!isBundleTicket(settings, ticketKey)) return;
 
   const actor: ActorContext = { accountId: event.atlassianId, source: 'jira-event' };
   const { buildId } = await enqueueTicketBuild(ticketKey, actor);
   console.log(`queued build ${buildId} for ${ticketKey} (${event.eventType ?? 'unknown event'})`);
+  // Step 13: a request was created or changed, so its project's clusters may have changed too. A failure here
+  // must not affect the ticket build, which is already queued.
+  if (settings && (settings.affectedServicesField || settings.clusterEntityField)) {
+    await enqueueClusterPass(ticketKey.split('-')[0], actor).catch((err) => console.error(`cluster pass enqueue failed for ${ticketKey}`, err));
+  }
 }

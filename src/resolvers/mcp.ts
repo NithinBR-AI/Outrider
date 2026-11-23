@@ -13,6 +13,8 @@ import {
   findSimilarResolutions as findSimilarResolutionsTool,
   getTicketContext as getTicketContextTool,
   GetTicketContextResult,
+  EmergingIncidentsResult,
+  getEmergingIncidents as getEmergingIncidentsTool,
 } from '../mcp/tools';
 import { cleanQueryText } from '../domain/query';
 
@@ -81,4 +83,18 @@ export async function findSimilarResolutions(payload: Record<string, unknown>, c
   if (!callerOf(context)) return NO_CALLER;
   const query = resolveFindQuery(payload ?? {}, 'description');
   return 'status' in query ? query : findSimilarResolutionsTool(query);
+}
+
+// Project key shape; anything else is rejected before it is used.
+const PROJECT_KEY_INPUT = /^[A-Z][A-Z0-9_]+$/;
+
+/**
+ * get-emerging-incidents (step 13). Input projectKey is optional: without it, every project that gets context.
+ * The caller comes from the invocation context; results are filtered for that caller (resolvers/signals.ts).
+ */
+export async function getEmergingIncidents(payload: Record<string, unknown>, context?: Record<string, unknown>): Promise<EmergingIncidentsResult | InvalidRequest> {
+  if (!callerOf(context)) return NO_CALLER;
+  const raw = typeof payload?.projectKey === 'string' ? payload.projectKey.trim().toUpperCase() : '';
+  if (raw && !PROJECT_KEY_INPUT.test(raw)) return { status: 'invalid-request', message: 'projectKey must be a Jira project key such as ITS.' };
+  return getEmergingIncidentsTool(raw || undefined);
 }

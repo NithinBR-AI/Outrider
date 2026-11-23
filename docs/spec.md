@@ -2742,6 +2742,46 @@ Only if clustering is included in the submission.
 
 If clustering slips, remove Phase 9 as one unit: cluster.ts, clusterPass.ts, the scheduled clustering trigger and handler, get-emerging-incidents, and the emerging-signal panel UI are all omitted. No stubs remain. The core product still ships.
 
+### Decisions made during implementation (step 13, 2026-11-23)
+
+Built as step 13 (development 9.2.0 to 9.9.0, including the fixes from live testing below). Clustering is included in the submission.
+
+1. **Identity sources (§14.2): Affected services for the service, Components only for the entity.**
+   - On the demo site, Affected services values are `[{ id: "ari:cloud:graph::service/<site>/<service>" }]`, with names only via `expand=renderedFields`. Components values are `[{ id: "10014", name: "VPN Server" }]`.
+   - Assets object fields came back `[]` for the demo user, so an Assets choice could not be shown to work. Without a visible error, the admin would see a demo that silently never clusters. The settings page refuses any field other than Components: "Entity field for clustering: only Components is supported."
+   - Free text never contributes: two requests sharing only words give no signal (§14.3).
+2. **One site-wide window and threshold (§14.5):** default 90 minutes and 5 requests; allowed 15–10080 minutes and 2–50 requests. A signal keeps the values it was raised with.
+3. **When passes run:** a `cluster-pass` job is queued 20 seconds after any ticket event in a project that gets context, and an hourly `cluster-sweep` scheduled trigger queues one per project. A per-project lock (`cluster-pass_<KEY>`) runs one pass at a time; a pass that finds it held is deferred and re-queued. A pass reads at most 200 open requests.
+4. **Uncertain beside confirmed:** a new uncertain signal does not form for a service or component already covered by an active (or dismissed, unexpired) confirmed signal. An existing uncertain signal is not removed when a confirmed one forms later; it stays uncertain until its window ends (§14.3, idempotency). Seen live: an uncertain Infrastructure Services signal (7 requests) stayed next to the new confirmed VPN Server signal (5).
+5. **Dismiss (§14.7 resolved by a human):** moves the record to resolved for everyone; it is not raised again within its window. Only a viewer who can see the ticket and enough of the signal's requests may dismiss it. Nothing is written to Jira.
+6. **Read time (§14.9):** one JQL search as the viewer per read for all requests in the signals. A signal is shown only if the viewer sees at least its threshold of requests, and only with those. A failed check shows nothing (`auth:cluster-check-failed`).
+   - Added after live testing: a signal whose window has ended is hidden at read time even before a pass marks it expired. The live check showed a signal still shown 22 minutes after its end time, until the hourly sweep.
+7. **Storage key (§18.7):** Forge KVS keys must match `^(?!\s+$)[a-zA-Z0-9:._\s-#]+$` and be at most 500 characters, so the `%XX` escapes in §18.7's examples are rejected ("Field 'key' must match pattern"; found on the first live pass). Segments now escape as `_XX`, with `_` itself always escaped, so decoding stays exact; a unit test checks real ARIs and timestamps against the KVS pattern. Records are deleted 7 days after their window ends.
+8. **Agent wording (§14.10):** `get-emerging-incidents` returns `signalsNote`. Verified via Rovo: with the first note the agent wrote "no formal incident has been declared yet" and read "confirmed" as "a high likelihood of a shared issue"; the note now says "confirmed" only means both fields match, neither state says how likely an incident is, and not to say "yet".
+9. **Panel text:** the uncertain reason says "at least one does not name a component" (or "an affected service"); the first wording, "none names a component", was wrong when some requests did.
+10. **Repeated summary claims (generation, found while testing clustering):** five requests with one shared description produced the same claim four times. `parseGeneratedClaims` now drops a claim worded the same as an earlier one, ignoring case and punctuation.
+11. **Demo data:** cluster requests are created by the seed pack shortly before recording, never kept on the site, because a signal lasts one window. Other open requests on the same service count too (the re-seeded SR-2 and SR-3 carry Infrastructure Services with no component), so they are seeded more than one window earlier. The demo site's SLA clean-up automation, which closed ITS-6265, ITS-6266 and ITS-6267, was disabled; SR-1 to SR-3 are now ITS-6273 to ITS-6275.
+12. **Verified live on the demo site:**
+    - 4 requests on one service gave no signal.
+    - The 5th gave an uncertain signal; 5 with service and component gave a confirmed one.
+    - A 6th joined both signals.
+    - 3 component-only requests gave an uncertain signal at threshold 3.
+    - Dismiss cleared a card everywhere, including Rovo.
+    - Thresholds 1 and 51 were refused.
+    - A 15-minute signal disappeared at its end time before the hourly sweep (development 9.4.0).
+14. **Forge token outage on the demo site (2026-11-23, development 9.4.0 to 9.6.0).** From 13:55 UTC Teamwork Graph lookups failed. At 14:44 UTC the hourly sweep's queue push failed with `PROXY_ERR … 500 - UNAVAILABLE_TOKEN_ERROR`; it runs as the app, and this was 15 minutes before any deploy that afternoon. From 15:02 UTC every viewer check failed with `NEEDS_AUTHENTICATION_ERR` (401, `atlassian-token-service-key`). From about 15:21 UTC app calls failed with 401: Jira GET, Confluence and queue push. Jina and Bedrock kept working. `forge install --upgrade` was a no-op ("already at the latest version"), and the developer status page showed everything operational. It cleared without any change. Nothing in the code that makes these calls changed between failing and working, so the cause is treated as on Atlassian's side; it is not proven.
+15. **Consent prompt (§16.5 refined).** The panel caught `NEEDS_AUTHENTICATION_ERR` like any failed check and showed "not available", so Forge never offered "Allow access" and the viewer could not recover. The panel now lets that one error, identified by its `name`, leave the resolver; every other failure still fails closed. The MCP tools are unchanged, because how Rovo handles that error was not checked.
+16. **Teams per project (§11.5 refined; replaces step 11's all-or-nothing).**
+    - Teamwork Graph intermittently refuses valid reads on this demo site: HTTP 200 with "User is not permitted to query this organization (ValidationError)" and a non-null error at `graphStore/cypherQueryV2`. This matches community.developer.atlassian.com/t/103690, where about 30% of reads on a Forge demo site succeeded and another site answered every read.
+    - Each project is now looked up on its own. Teams from projects that answered are shown; failed projects add `twg:partial`, with the panel note "Some teams couldn't be checked right now.", and if all failed, `twg:unavailable` as before. A project that could not be checked is never shown as having no team.
+    - Only that refusal is retried: 5 tries about 300 ms apart, no new try once its pause would end after the 4-second budget.
+    - Measured: with 3 back-to-back tries, ITS-6275 (incidents in ITS and ITO) needed 7 refreshes to show Platform Support. With spaced tries and per-project results, 5 of 5 refreshes on ITS-6275 and 5 of 5 on ITS-6273 showed it.
+    - A per-viewer, per-project cache used only on failure was considered and deferred: it would reverse "teams are never stored" for one site's problem. It is the next step if the rehearsal is still flaky.
+17. **Smaller fixes from the same testing:**
+    - Lock acquire: a conflict whose lock was already released by the re-read is retried once instead of logged as a storage error ("Provided key already exists and cannot be overwritten").
+    - Teamwork Graph errors: the log now carries the first two GraphQL messages and their classification, cut to 200 characters.
+13. **Not done:** Assets as an entity field. Hiding a signal from a viewer who cannot see enough of its requests is covered by the integration tests only; on the demo site both users can see every ITS request, so the second user correctly saw the signal too.
+
 Phase 10 — Demo
 
 Build one reproducible scenario. Rehearse at least five times. Target under three minutes for the core walkthrough.

@@ -22,7 +22,7 @@ vi.mock('@forge/events', () => ({
   },
 }));
 
-import { BUILD_QUEUE_KEY, enqueueTicketBuild, LOCK_RETRY_DELAY_SECONDS, onJiraIssueEvent, requeueTicketJob } from '../enqueue';
+import { BUILD_QUEUE_KEY, CLUSTER_PASS_DELAY_SECONDS, enqueueTicketBuild, LOCK_RETRY_DELAY_SECONDS, onClusterSweep, onJiraIssueEvent, requeueClusterJob, requeueTicketJob } from '../enqueue';
 import { BuildStatus } from '../../domain/types';
 
 const statusOf = (key: string) => h.store.get(`status:${key}`) as BuildStatus | undefined;
@@ -48,9 +48,27 @@ describe('onJiraIssueEvent', () => {
     const s = statusOf('ITS-6265')!;
     expect(s.status).toBe('queued');
     expect(s.actor).toEqual({ accountId: 'user-1', source: 'jira-event' });
-    expect(h.push).toHaveBeenCalledTimes(1);
+    expect(h.push).toHaveBeenCalledTimes(2);
     const body = h.push.mock.calls[0][0].body;
     expect(body).toMatchObject({ kind: 'jira-ticket', ticketKey: 'ITS-6265', buildId: s.buildId, requestedAt: s.requestedAt });
+    // Step 13: and one clustering pass for the ticket's project, after a short delay.
+    expect(h.push.mock.calls[1][0]).toMatchObject({ body: { kind: 'cluster-pass', projectKey: 'ITS', actor: { accountId: 'user-1', source: 'jira-event' } }, delayInSeconds: CLUSTER_PASS_DELAY_SECONDS });
+  });
+
+  it('queues no clustering pass when neither a service field nor an entity field is configured', async () => {
+    h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS'], savedAt: 't' });
+    await onJiraIssueEvent({ issue: { key: 'ITS-6265' } });
+    expect(h.push.mock.calls.map((c) => c[0].body.kind)).toEqual(['jira-ticket']);
+    h.push.mockClear();
+    h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS'], clusterEntityField: 'components', savedAt: 't' });
+    await onJiraIssueEvent({ issue: { key: 'ITS-6265' } });
+    expect(h.push.mock.calls.map((c) => c[0].body.kind)).toEqual(['jira-ticket', 'cluster-pass']);
+  });
+
+  it('a failed clustering enqueue does not fail the event: the ticket build is already queued', async () => {
+    h.push.mockResolvedValueOnce({ jobId: 'job-1' }).mockRejectedValueOnce(new Error('queue down'));
+    await expect(onJiraIssueEvent({ issue: { key: 'ITS-6265' } })).resolves.toBeUndefined();
+    expect(statusOf('ITS-6265')!.status).toBe('queued');
   });
 
   it('ignores self-generated events', async () => {
@@ -134,5 +152,27 @@ describe('site settings (spec Phase 5.5)', () => {
     await onJiraIssueEvent({ issue: { key: 'ITS-6265' } });
     expect(h.push).toHaveBeenCalledTimes(1);
     expect(h.push.mock.calls[0][0].body).toMatchObject({ ticketKey: 'SUP-12' });
+  });
+});
+
+describe('clustering passes (step 13)', () => {
+  it('the hourly sweep queues one immediate pass per context project', async () => {
+    h.store.set('settings:site', { bundleProjects: ['ITS', 'HR'], sourceProjects: ['ITS'], affectedServicesField: 'customfield_10039', savedAt: 't' });
+    await onClusterSweep();
+    expect(h.push.mock.calls.map((c) => [c[0].body.kind, c[0].body.projectKey, c[0].delayInSeconds])).toEqual([['cluster-pass', 'ITS', 0], ['cluster-pass', 'HR', 0]]);
+  });
+
+  it('the sweep does nothing without settings or without an identity field', async () => {
+    h.store.delete('settings:site');
+    await onClusterSweep();
+    h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS'], savedAt: 't' });
+    await onClusterSweep();
+    expect(h.push).not.toHaveBeenCalled();
+  });
+
+  it('re-queues a locked pass unchanged after the lock retry delay', async () => {
+    const job = { kind: 'cluster-pass' as const, projectKey: 'ITS', buildId: 'b', requestedAt: 'r', actor: { source: 'unknown' as const } };
+    await requeueClusterJob(job);
+    expect(h.push).toHaveBeenCalledWith({ body: job, delayInSeconds: LOCK_RETRY_DELAY_SECONDS });
   });
 });

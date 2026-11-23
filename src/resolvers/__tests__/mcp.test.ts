@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const tool = vi.hoisted(() => vi.fn());
 const find = vi.hoisted(() => ({ incidents: vi.fn(), resolutions: vi.fn() }));
 // Teamwork Graph (step 11): no linked teams unless a test says otherwise; tests/integration/teams-authorization.test.ts covers teams.
-vi.mock('../../adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => new Map(keys.map((key) => [key, []])) }));
+vi.mock('../../adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => ({ teams: new Map(keys.map((key) => [key, []])), failed: [] }) }));
 vi.mock('../../mcp/tools', () => ({ getTicketContext: tool, findRelatedIncidents: find.incidents, findSimilarResolutions: find.resolutions }));
 
 import { findRelatedIncidents, findSimilarResolutions, getTicketContext, resolveFindQuery, resolveTicketKey } from '../mcp';

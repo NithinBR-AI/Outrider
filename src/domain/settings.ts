@@ -1,4 +1,5 @@
 // Per-site settings (spec Phase 5.5). Pure: no Forge imports, no I/O.
+import { ClusterConfig, DEFAULT_THRESHOLD, DEFAULT_WINDOW_MINUTES, EntityKind, MAX_THRESHOLD, MAX_WINDOW_MINUTES, MIN_THRESHOLD, MIN_WINDOW_MINUTES } from './cluster';
 //
 // Four settings replace what used to be demo-site constants:
 // - bundleProjects: projects whose tickets get a context bundle (was BUNDLE_PROJECTS = ['ITS']).
@@ -14,6 +15,12 @@ export type SiteSettings = {
   requestTypeField?: string;
   // Step 10: Confluence spaces searched for knowledge articles. Optional; none means no articles.
   confluenceSpaces?: string[];
+  // Step 13: request clustering. The entity field is Jira Components ("components"), the only entity source verified
+  // on the demo site (Assets values could not be read there); none means only service-only (uncertain) signals can
+  // form. Window and threshold default to spec §14.5.
+  clusterEntityField?: string;
+  clusterWindowMinutes?: number;
+  clusterThreshold?: number;
 };
 
 /** What retrieval needs from the settings (adapters/jira.ts, adapters/confluence.ts). */
@@ -32,7 +39,35 @@ export const MAX_PROJECTS = 20;
 
 export const NOT_SET_UP_MESSAGE = "Outrider isn't set up for this project yet. Ask a Jira admin to configure it.";
 
-export type SettingsInput = { bundleProjects?: unknown; sourceProjects?: unknown; affectedServicesField?: unknown; requestTypeField?: unknown; confluenceSpaces?: unknown };
+export type SettingsInput = {
+  bundleProjects?: unknown;
+  sourceProjects?: unknown;
+  affectedServicesField?: unknown;
+  requestTypeField?: unknown;
+  confluenceSpaces?: unknown;
+  clusterEntityField?: unknown;
+  clusterWindowMinutes?: unknown;
+  clusterThreshold?: unknown;
+};
+
+// The system Components field, offered as the other entity source (spec §14.2: component ID).
+export const COMPONENTS_FIELD = 'components';
+
+/** The entity kind the configured entity field yields. Only Components is accepted, so always component IDs. */
+export const entityKindOf = (_field: string): EntityKind => 'component';
+
+/** The clustering window and threshold for a site, with the spec defaults (§14.5) when unset. */
+export function clusterConfig(settings: Pick<SiteSettings, 'clusterWindowMinutes' | 'clusterThreshold'> | undefined): ClusterConfig {
+  return { windowMinutes: settings?.clusterWindowMinutes ?? DEFAULT_WINDOW_MINUTES, threshold: settings?.clusterThreshold ?? DEFAULT_THRESHOLD };
+}
+
+/** A whole number within bounds, or an error naming the setting. Empty means "use the default". */
+function boundedInt(value: unknown, label: string, min: number, max: number): { value?: number } | { error: string } {
+  if (value === undefined || value === null || value === '') return {};
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value.trim()) : Number.NaN;
+  if (!Number.isInteger(n) || n < min || n > max) return { error: `${label}: enter a whole number from ${min} to ${max}.` };
+  return { value: n };
+}
 
 const keyList = (value: unknown): string[] =>
   Array.isArray(value) ? [...new Set(value.filter((v): v is string => typeof v === 'string').map((v) => v.trim().toUpperCase()).filter((v) => v.length > 0))] : [];
@@ -62,10 +97,21 @@ export function parseSettings(input: SettingsInput | null | undefined): { settin
   if (confluenceSpaces.length > MAX_PROJECTS) return { error: `Confluence spaces: choose at most ${MAX_PROJECTS} spaces.` };
   const badSpace = confluenceSpaces.find((k) => !SPACE_KEY.test(k));
   if (badSpace) return { error: `Confluence spaces: "${badSpace}" is not a Confluence space key.` };
+  const clusterEntityField = fieldId(input?.clusterEntityField);
+  if (clusterEntityField && clusterEntityField !== COMPONENTS_FIELD) {
+    return { error: 'Entity field for clustering: only Components is supported.' };
+  }
+  const windowMinutes = boundedInt(input?.clusterWindowMinutes, 'Clustering window (minutes)', MIN_WINDOW_MINUTES, MAX_WINDOW_MINUTES);
+  if ('error' in windowMinutes) return windowMinutes;
+  const threshold = boundedInt(input?.clusterThreshold, 'Requests needed for a signal', MIN_THRESHOLD, MAX_THRESHOLD);
+  if ('error' in threshold) return threshold;
   const settings: SiteSettings = { bundleProjects, sourceProjects };
   if (affectedServicesField) settings.affectedServicesField = affectedServicesField;
   if (requestTypeField) settings.requestTypeField = requestTypeField;
   if (confluenceSpaces.length > 0) settings.confluenceSpaces = confluenceSpaces;
+  if (clusterEntityField) settings.clusterEntityField = clusterEntityField;
+  if (windowMinutes.value !== undefined) settings.clusterWindowMinutes = windowMinutes.value;
+  if (threshold.value !== undefined) settings.clusterThreshold = threshold.value;
   return { settings };
 }
 

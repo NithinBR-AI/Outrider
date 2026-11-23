@@ -15,8 +15,15 @@ import { BuildStatus, ViewerBundle } from '../domain/types';
 import { MAX_DISPLAY_ITEMS_PER_SECTION } from '../domain/score';
 import { bundleSourceKeys } from '../domain/authorize';
 import { viewerBundle } from './viewerContext';
+import { dismissSignal } from './signals';
 import { getSettings } from '../adapters/settings';
 import { isBundleTicket } from '../domain/settings';
+
+/**
+ * True for Forge's NeedsAuthenticationError (name NEEDS_AUTHENTICATION_ERR, status 401): the viewer has not
+ * granted, or no longer grants, Outrider access to act as them. Checked by name so it also holds under mocks.
+ */
+export const needsUserConsent = (err: unknown): boolean => !!err && typeof err === 'object' && (err as { name?: unknown }).name === 'NEEDS_AUTHENTICATION_ERR';
 
 export type PanelState =
   | { state: 'no-bundle' }
@@ -34,6 +41,15 @@ resolver.define('getContext', async (req): Promise<PanelState> => {
   return getPanelContext(ticketKey);
 });
 
+// Step 13: the Dismiss button on an emerging-incident card. The ticket comes from the Forge context, never the
+// payload; resolvers/signals.ts checks the viewer before changing anything.
+resolver.define('dismissSignal', async (req): Promise<{ ok: boolean }> => {
+  const ticketKey = (req.context?.extension as { issue?: { key?: string } } | undefined)?.issue?.key;
+  const signalId = (req.payload as { signalId?: unknown } | undefined)?.signalId;
+  if (!ticketKey || typeof signalId !== 'string' || signalId.length === 0) return { ok: false };
+  return dismissSignal(ticketKey, signalId);
+});
+
 /** Builds the viewer's panel state for a ticket. Exported for tests. */
 export async function getPanelContext(ticketKey: string): Promise<PanelState> {
   const [status, stored, settings] = await Promise.all([getStatus(ticketKey), getBundle(ticketKey), getSettings()]);
@@ -42,6 +58,9 @@ export async function getPanelContext(ticketKey: string): Promise<PanelState> {
   try {
     visible = await visibleIssueKeys([ticketKey, ...(stored ? bundleSourceKeys(stored) : [])]);
   } catch (err) {
+    // Forge shows its "Allow access" prompt only if this error leaves the resolver. Seen live on 2026-11-23:
+    // when the viewer's grant lapsed, catching it turned every panel into "not available" with no way to fix it.
+    if (needsUserConsent(err)) throw err;
     console.error(`viewer visibility check failed for ${ticketKey}`, err);
     visible = null;
   }
@@ -70,6 +89,7 @@ export function forDisplay(bundle: ViewerBundle): ViewerBundle {
     articles: top(bundle.articles),
     services: top(bundle.services),
     teams: top(bundle.teams),
+    emergingSignals: bundle.emergingSignals ?? [],
   };
 }
 

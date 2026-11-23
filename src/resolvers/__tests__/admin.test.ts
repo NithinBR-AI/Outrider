@@ -31,6 +31,7 @@ describe('loadSettingsPage', () => {
       fieldOptions: {
         affectedServices: [{ id: 'customfield_10039', name: 'Affected services' }],
         requestType: [{ id: 'customfield_10010', name: 'Request Type' }],
+        clusterEntity: [],
       },
       detected: { affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' },
     });

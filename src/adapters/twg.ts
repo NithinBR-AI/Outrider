@@ -45,13 +45,51 @@ type TeamsResponse = {
   errors?: unknown[];
 };
 
+/**
+ * GraphQL error messages and classifications for the log, at most 200 characters. They name the failing field or
+ * the problem, not user data. Added after an ITS lookup failed on the demo site with no detail (2026-11-23).
+ */
+function describeErrors(errors: unknown[]): string {
+  const parts = errors.slice(0, 2).map((e) => {
+    const o = e && typeof e === 'object' ? (e as { message?: unknown; extensions?: { classification?: unknown; statusCode?: unknown } }) : {};
+    const message = typeof o.message === 'string' ? o.message : 'no message';
+    const kind = [o.extensions?.classification, o.extensions?.statusCode].filter((x) => typeof x === 'string' || typeof x === 'number').join(' ');
+    return kind ? `${message} (${kind})` : message;
+  });
+  return parts.join('; ').replace(/\s+/g, ' ').slice(0, 200);
+}
+
+// Teamwork Graph on Forge demo sites intermittently refuses a valid read with HTTP 200 and this error, for the
+// same user, query and project, even within one second (seen on this demo site on 2026-11-23, and reported at
+// community.developer.atlassian.com/t/103690 with about 30% of reads succeeding). Only this error is retried;
+// TEAM_LOOKUP_BUDGET_MS still bounds the whole read.
+// Tries are spaced out: back-to-back tries were refused together on the demo site (2026-11-23), while reads a
+// moment apart split between success and refusal. 5 tries with 4 pauses of 300 ms fit inside the 4-second budget
+// at the call times seen on the demo site; a lookup still retrying at the deadline stops.
+const INTERMITTENT_REFUSAL = /not permitted to query this organization/i;
+export const TEAM_LOOKUP_ATTEMPTS = 5;
+export const TEAM_RETRY_DELAY_MS = 300;
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const isIntermittentRefusal = (errors: unknown[]): boolean =>
+  errors.some((e) => !!e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string' && INTERMITTENT_REFUSAL.test((e as { message: string }).message));
+
 /** Teams linked to one Jira project, as the viewer. Throws a short code on any failure. */
-async function teamsForProject(projectKey: string): Promise<GraphTeam[]> {
+async function teamsForProject(projectKey: string, retryDelayMs: number, deadlineAt: number): Promise<GraphTeam[]> {
   const ari = await spaceAri(projectKey);
-  const res = await api.asUser().requestTeamworkGraph(TEAMS_BY_SPACE, { spaceAri: ari }, 'outrider_teamsBySpace');
-  if (!res.ok) throw new Error(`twg-${res.status}`);
-  const body = (await res.json()) as TeamsResponse;
-  if (body.errors && body.errors.length > 0) throw new Error('twg-query-error');
+  let body: TeamsResponse = {};
+  for (let attempt = 1; attempt <= TEAM_LOOKUP_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      // Not worth another try if the pause would end after the deadline: the read has given up by then.
+      if (Date.now() + retryDelayMs >= deadlineAt) break;
+      await pause(retryDelayMs);
+    }
+    const res = await api.asUser().requestTeamworkGraph(TEAMS_BY_SPACE, { spaceAri: ari }, 'outrider_teamsBySpace');
+    if (!res.ok) throw new Error(`twg-${res.status}`);
+    body = (await res.json()) as TeamsResponse;
+    if (!body.errors || body.errors.length === 0 || !isIntermittentRefusal(body.errors)) break;
+  }
+  if (body.errors && body.errors.length > 0) throw new Error(`twg-query-error: ${describeErrors(body.errors)}`);
   const edges = body.data?.atlassianTeamsBySpace?.edges;
   if (!Array.isArray(edges)) throw new Error('twg-shape');
   const teams: GraphTeam[] = [];
@@ -63,19 +101,29 @@ async function teamsForProject(projectKey: string): Promise<GraphTeam[]> {
   return teams;
 }
 
+/** Teams per project that answered, and the projects whose lookup failed or ran out of time, with why. */
+export type TeamLookup = { teams: Map<string, GraphTeam[]>; failed: { projectKey: string; error: string }[] };
+
 /**
- * Teams linked to each project, looked up concurrently as the viewer within TEAM_LOOKUP_BUDGET_MS.
- * All or nothing: if any lookup fails or the budget runs out, this throws, and the caller drops every team
- * for this read (a partial team list could suggest a project has no team when its lookup simply failed).
+ * Teams linked to each project, looked up concurrently as the viewer within TEAM_LOOKUP_BUDGET_MS. Each project
+ * succeeds or fails on its own (a lookup still running at the deadline fails with twg-timeout), so one refused
+ * project no longer hides the teams of another. Never throws. The caller says when some projects could not be
+ * checked, so a missing team is never presented as "no team linked".
  */
-export async function teamsForProjects(projectKeys: string[], budgetMs = TEAM_LOOKUP_BUDGET_MS): Promise<Map<string, GraphTeam[]>> {
+export async function teamsForProjects(projectKeys: string[], budgetMs = TEAM_LOOKUP_BUDGET_MS, retryDelayMs = TEAM_RETRY_DELAY_MS): Promise<TeamLookup> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadlineAt = Date.now() + budgetMs;
   const deadline = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => reject(new Error('twg-timeout')), budgetMs);
   });
   try {
-    const lists = await Promise.race([Promise.all(projectKeys.map((k) => teamsForProject(k))), deadline]);
-    return new Map(projectKeys.map((k, i) => [k, lists[i]]));
+    const settled = await Promise.allSettled(projectKeys.map((k) => Promise.race([teamsForProject(k, retryDelayMs, deadlineAt), deadline])));
+    const out: TeamLookup = { teams: new Map(), failed: [] };
+    settled.forEach((r, i) => {
+      if (r.status === 'fulfilled') out.teams.set(projectKeys[i], r.value);
+      else out.failed.push({ projectKey: projectKeys[i], error: r.reason instanceof Error ? r.reason.message : String(r.reason) });
+    });
+    return out;
   } finally {
     clearTimeout(timer);
   }

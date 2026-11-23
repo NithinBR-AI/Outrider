@@ -6,7 +6,7 @@
 // admin can only choose projects the app can actually search.
 import Resolver from '@forge/resolver';
 import { getSettings, listFields, listProjects, listSpaces, ProjectOption, saveSettings, SaveResult, SpaceOption } from '../adapters/settings';
-import { AFFECTED_SERVICES_FIELD_TYPE, detectFields, fieldsOfType, REQUEST_TYPE_FIELD_TYPE, SettingsInput, SiteSettings } from '../domain/settings';
+import { AFFECTED_SERVICES_FIELD_TYPE, COMPONENTS_FIELD, detectFields, fieldsOfType, REQUEST_TYPE_FIELD_TYPE, SettingsInput, SiteSettings } from '../domain/settings';
 
 export type FieldOption = { id: string; name: string };
 
@@ -16,7 +16,7 @@ export type SettingsPageData =
       settings?: SiteSettings;
       projects: ProjectOption[];
       projectsTruncated: boolean;
-      fieldOptions: { affectedServices: FieldOption[]; requestType: FieldOption[] };
+      fieldOptions: { affectedServices: FieldOption[]; requestType: FieldOption[]; clusterEntity: FieldOption[] };
       detected: { affectedServicesField?: string; requestTypeField?: string };
       // Confluence is optional: if its spaces cannot be listed (for example Outrider is not installed in
       // Confluence on this site), the rest of the page still works and spacesError says why.
@@ -52,6 +52,8 @@ export async function loadSettingsPage(): Promise<SettingsPageData> {
       fieldOptions: {
         affectedServices: fieldsOfType(fields, AFFECTED_SERVICES_FIELD_TYPE).map(toOption),
         requestType: fieldsOfType(fields, REQUEST_TYPE_FIELD_TYPE).map(toOption),
+        // Step 13: Components only, the entity source verified on the demo site (spec §14.2: component ID).
+        clusterEntity: fields.filter((f) => f.id === COMPONENTS_FIELD).map(toOption),
       },
       detected: detectFields(fields),
     };

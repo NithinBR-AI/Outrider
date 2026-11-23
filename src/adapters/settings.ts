@@ -108,9 +108,10 @@ export async function saveSettings(input: SettingsInput, now: Date = new Date())
       const missing = spaces.find((k) => !visible.has(k));
       if (missing) return { ok: false, message: `Confluence space ${missing} doesn't exist or Outrider can't see it. Add Outrider as a member of that space, then try again.` };
     }
-    const wanted = [settings.affectedServicesField, settings.requestTypeField].filter((f): f is string => !!f);
+    const wanted = [settings.affectedServicesField, settings.requestTypeField, settings.clusterEntityField].filter((f): f is string => !!f);
     if (wanted.length > 0) {
-      const ids = new Set((await listFields()).map((f) => f.id));
+      const fields = await listFields();
+      const ids = new Set(fields.map((f) => f.id));
       const missing = wanted.find((id) => !ids.has(id));
       if (missing) return { ok: false, message: `Field ${missing} doesn't exist on this site.` };
     }

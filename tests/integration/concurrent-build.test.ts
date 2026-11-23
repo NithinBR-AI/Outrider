@@ -34,6 +34,8 @@ vi.mock('@forge/kvs', () => ({
 vi.mock('@forge/events', () => ({
   Queue: class {
     push = async (event: { body: unknown; delayInSeconds?: number }) => {
+      // Step 13: ticket events also queue a clustering pass; this suite is about ticket builds only.
+      if ((event.body as { kind?: string }).kind === 'cluster-pass') return { jobId: 'cluster' };
       h.pushes.push(event);
       return { jobId: `job-${h.pushes.length}` };
     };

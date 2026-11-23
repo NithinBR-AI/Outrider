@@ -1,6 +1,6 @@
 // Teams involved (step 11). Pure.
 import { describe, expect, it } from 'vitest';
-import { incidentProjects, MAX_TEAM_PROJECTS, MAX_TEAMS, mergeTeams, teamEvidence, TWG_UNAVAILABLE } from '../teams';
+import { incidentProjects, MAX_TEAM_PROJECTS, MAX_TEAMS, mergeTeams, teamEvidence, teamsFailure, TWG_PARTIAL, TWG_UNAVAILABLE } from '../teams';
 import { Incident } from '../types';
 
 const incident = (id: string, kind: 'jira-issue' | 'confluence-page' = 'jira-issue'): Incident => ({
@@ -65,5 +65,14 @@ describe('mergeTeams', () => {
     expect(MAX_TEAMS).toBe(5);
     expect(MAX_TEAM_PROJECTS).toBe(5);
     expect(TWG_UNAVAILABLE).toBe('twg:unavailable');
+    expect(TWG_PARTIAL).toBe('twg:partial');
+  });
+
+  it('records no failure, a partial one, or unavailable, by how many project lookups failed', () => {
+    expect(teamsFailure(2, 0)).toBeUndefined();
+    expect(teamsFailure(2, 1)).toBe(TWG_PARTIAL);
+    expect(teamsFailure(2, 2)).toBe(TWG_UNAVAILABLE);
+    expect(teamsFailure(1, 1)).toBe(TWG_UNAVAILABLE);
+    expect(teamsFailure(0, 0)).toBeUndefined();
   });
 });

@@ -86,6 +86,19 @@ describe('saveSettings', () => {
     expect(h.store.has(SETTINGS_KEY)).toBe(false);
   });
 
+  it('accepts Components as the clustering entity field and rejects any other field before calling Jira (step 13)', async () => {
+    h.handler = (path) =>
+      path === '/rest/api/3/field'
+        ? { status: 200, json: [{ id: 'customfield_10039' }, { id: 'customfield_10010' }, { id: 'components' }, { id: 'customfield_10081', schema: { custom: 'com.atlassian.jira.plugins.cmdb:cmdb-object-cftype' } }, { id: 'customfield_10500', schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textfield' } }] }
+        : site(path);
+    expect(await saveSettings({ ...VALID, clusterEntityField: 'components', clusterWindowMinutes: 120, clusterThreshold: 3 })).toMatchObject({ ok: true, settings: { clusterEntityField: 'components', clusterWindowMinutes: 120, clusterThreshold: 3 } });
+    h.calls = [];
+    for (const bad of ['customfield_10081', 'customfield_10500']) {
+      expect(await saveSettings({ ...VALID, clusterEntityField: bad })).toEqual({ ok: false, message: 'Entity field for clustering: only Components is supported.' });
+    }
+    expect(h.calls).toEqual([]);
+  });
+
   it('checks each project once and skips the field list when no field is set', async () => {
     await saveSettings({ bundleProjects: ['SUP'], sourceProjects: ['SUP'] });
     expect(h.calls).toEqual(['/rest/api/3/project/SUP']);

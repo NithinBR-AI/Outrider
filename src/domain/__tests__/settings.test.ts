@@ -2,7 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   AFFECTED_SERVICES_FIELD_TYPE,
+  clusterConfig,
+  COMPONENTS_FIELD,
   detectFields,
+  entityKindOf,
   fieldsOfType,
   isBundleTicket,
   MAX_PROJECTS,
@@ -10,6 +13,41 @@ import {
   parseSettings,
   REQUEST_TYPE_FIELD_TYPE,
 } from '../settings';
+
+describe('clustering settings (step 13)', () => {
+  const base = { bundleProjects: ['ITS'], sourceProjects: ['ITS'] };
+
+  it('accepts only Components as the entity field (Assets is not verified), and leaves it out when empty', () => {
+    expect(parseSettings({ ...base, clusterEntityField: ' components ' })).toEqual({ settings: { ...base, clusterEntityField: 'components' } });
+    expect(parseSettings({ ...base, clusterEntityField: COMPONENTS_FIELD })).toEqual({ settings: { ...base, clusterEntityField: 'components' } });
+    expect(parseSettings({ ...base, clusterEntityField: '' })).toEqual({ settings: base });
+    for (const bad of ['customfield_10081', 'summary']) {
+      expect(parseSettings({ ...base, clusterEntityField: bad })).toEqual({ error: 'Entity field for clustering: only Components is supported.' });
+    }
+  });
+
+  it('accepts a window of 15 to 10080 minutes and a threshold of 2 to 50, as numbers or text', () => {
+    expect(parseSettings({ ...base, clusterWindowMinutes: '1440', clusterThreshold: 3 })).toEqual({ settings: { ...base, clusterWindowMinutes: 1440, clusterThreshold: 3 } });
+    expect(parseSettings({ ...base, clusterWindowMinutes: 15, clusterThreshold: 50 })).toMatchObject({ settings: { clusterWindowMinutes: 15, clusterThreshold: 50 } });
+    expect(parseSettings({ ...base, clusterWindowMinutes: null, clusterThreshold: undefined })).toEqual({ settings: base });
+    for (const bad of [14, 10_081, 90.5, 'abc', true]) {
+      expect(parseSettings({ ...base, clusterWindowMinutes: bad })).toEqual({ error: 'Clustering window (minutes): enter a whole number from 15 to 10080.' });
+    }
+    for (const bad of [1, 51, '2.5']) {
+      expect(parseSettings({ ...base, clusterThreshold: bad })).toEqual({ error: 'Requests needed for a signal: enter a whole number from 2 to 50.' });
+    }
+  });
+
+  it('uses the spec defaults (90 minutes, 5 requests) when unset', () => {
+    expect(clusterConfig(undefined)).toEqual({ windowMinutes: 90, threshold: 5 });
+    expect(clusterConfig({ clusterWindowMinutes: 1440 })).toEqual({ windowMinutes: 1440, threshold: 5 });
+    expect(clusterConfig({ clusterThreshold: 3 })).toEqual({ windowMinutes: 90, threshold: 3 });
+  });
+
+  it('gives component IDs for the Components field', () => {
+    expect(entityKindOf('components')).toBe('component');
+  });
+});
 
 describe('parseSettings', () => {
   it('normalizes project keys: trimmed, upper-cased, de-duplicated, empty entries dropped', () => {

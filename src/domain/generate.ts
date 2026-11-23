@@ -120,8 +120,12 @@ function claimIdFor(index: number, label: string | null, text: string): string {
  * Validates the model's tool-call arguments and turns them into GeneratedClaims (§13.6).
  * Throws 'generation-invalid-output' if the output is not { claims: [...] } at all: the build then stores no
  * summary. Individual claims that are empty, not text, or longer than MAX_CLAIM_CHARS are dropped; at most
- * MAX_CLAIMS are kept. A label that was not given to the model becomes citedSourceRef: null.
+ * MAX_CLAIMS are kept. A claim worded the same as an earlier one (ignoring case and punctuation) is dropped.
+ * A label that was not given to the model becomes citedSourceRef: null.
  */
+/** A claim's wording for duplicate detection: lower case, letters and digits only, single spaces. */
+const claimWording = (text: string): string => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
 export function parseGeneratedClaims(raw: unknown, labels: Record<string, SourceRef>): GeneratedClaim[] {
   let value: unknown = raw;
   if (typeof raw === 'string') {
@@ -135,10 +139,15 @@ export function parseGeneratedClaims(raw: unknown, labels: Record<string, Source
   if (!Array.isArray(claims)) throw new Error('generation-invalid-output');
 
   const out: GeneratedClaim[] = [];
+  const seen = new Set<string>();
   for (const item of claims) {
     if (out.length >= MAX_CLAIMS) break;
     const text = item && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string' ? (item as { text: string }).text.trim() : '';
     if (!text || text.length > MAX_CLAIM_CHARS) continue;
+    // The same sentence from several near-identical sources is shown once (case and punctuation ignored).
+    const norm = claimWording(text);
+    if (seen.has(norm)) continue;
+    seen.add(norm);
     const source = (item as { source?: unknown }).source;
     const label = typeof source === 'string' ? source.trim() : null;
     const ref = label && Object.prototype.hasOwnProperty.call(labels, label) ? labels[label] : null;

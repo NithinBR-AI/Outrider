@@ -1,6 +1,7 @@
 // Core domain types for Outrider
 // Source of truth: docs/spec.md §7
 import type { TeamLink } from './teams';
+import type { ClusterSignal } from './cluster';
 
 export type SourceRef = {
   kind: 'jira-issue' | 'confluence-page';
@@ -113,6 +114,8 @@ export type ViewerBundle = Omit<ContextBundle, 'summary'> & {
   // Step 11: teams linked to the projects of the related incidents this viewer can see. Looked up at read
   // time as the viewer (Teamwork Graph), never stored in the ContextBundle.
   teams?: TeamLink[];
+  // Step 13: emerging-incident signals that include this ticket, filtered for this viewer at read time.
+  emergingSignals?: ClusterSignal[];
 };
 
 export type ActorContext = {
@@ -132,6 +135,14 @@ export type BuildJob =
       kind: 'confluence-page';
       contentId: string;
       operation: 'upsert' | 'delete';
+      buildId: string;
+      requestedAt: string;
+      actor: ActorContext;
+    }
+  | {
+      // Step 13: one clustering pass over a project's open requests (spec §4.3, §14).
+      kind: 'cluster-pass';
+      projectKey: string;
       buildId: string;
       requestedAt: string;
       actor: ActorContext;

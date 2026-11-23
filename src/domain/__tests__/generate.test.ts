@@ -146,6 +146,18 @@ describe('parseGeneratedClaims', () => {
     expect(many[MAX_CLAIMS - 1].text).toBe(`claim ${MAX_CLAIMS - 1}`);
   });
 
+  it('drops a claim worded the same as an earlier one, ignoring case and punctuation', () => {
+    // Seen on the demo site: four near-identical requests produced the same sentence four times.
+    const same = 'Several of us working remotely are affected.';
+    const out = parseGeneratedClaims(
+      { claims: [{ text: same, source: 'S1' }, { text: same, source: 'S2' }, { text: 'several of us working remotely are affected', source: 'S3' }, { text: 'Several of us, working remotely, are affected!', source: 'S1' }, { text: 'The VPN gateway is down.', source: 'S2' }] },
+      labels,
+    );
+    expect(out.map((c) => [c.text, c.citedSourceRef])).toEqual([[same, labels.S1], ['The VPN gateway is down.', labels.S2]]);
+    // A different claim is kept even when it shares most words.
+    expect(parseGeneratedClaims({ claims: [{ text: 'Login fails with 503.', source: 'S1' }, { text: 'Login fails with 502.', source: 'S1' }] }, labels)).toHaveLength(2);
+  });
+
   it('gives each claim a stable ID that depends on its text and cited source', () => {
     const a = parseGeneratedClaims({ claims: [{ text: 'same', source: 'S1' }] }, labels)[0].claimId;
     const again = parseGeneratedClaims({ claims: [{ text: 'same', source: 'S1' }] }, labels)[0].claimId;

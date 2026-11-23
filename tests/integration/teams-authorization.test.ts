@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   // Teams each viewer can see in Teamwork Graph (it filters by the caller's permissions).
   graphSees: {} as Record<string, boolean>,
   graphFails: false,
+  // Space ARIs whose lookup is refused the way the demo site refuses it (HTTP 200 with an error), on every try.
+  graphRefuses: [] as string[],
   graphCalls: [] as { viewer: string; spaceAri: string }[],
 }));
 
@@ -43,6 +45,7 @@ vi.mock('@forge/api', () => {
         requestTeamworkGraph: async (_q: string, variables: { spaceAri: string }) => {
           h.graphCalls.push({ viewer: h.viewer, spaceAri: variables.spaceAri });
           if (h.graphFails) return respond(503, {});
+          if (h.graphRefuses.includes(variables.spaceAri)) return respond(200, { errors: [{ message: 'User is not permitted to query this organization' }], data: null });
           const empty = { data: { atlassianTeamsBySpace: { edges: [] } } };
           return respond(200, h.graphSees[h.viewer] ? (fixture.teamsBySpace[variables.spaceAri] ?? empty) : empty);
         },
@@ -53,7 +56,7 @@ vi.mock('@forge/api', () => {
 
 import { getPanelContext, PanelState } from '../../src/resolvers/panel';
 import { getTicketContext } from '../../src/resolvers/mcp';
-import { TWG_UNAVAILABLE } from '../../src/domain/teams';
+import { TWG_PARTIAL, TWG_UNAVAILABLE } from '../../src/domain/teams';
 
 const ITO_ARI = `ari:cloud:jira:${fixture.cloudId}:project/10003`;
 const ref = (id: string) => ({ kind: 'jira-issue' as const, id, url: `https://one-atlas-edlg.atlassian.net/browse/${id}`, title: id, updatedAt: 'u' });
@@ -84,6 +87,7 @@ beforeEach(() => {
   h.canSee = { userA: ['ITS-6265', 'ITO-9647', 'ITS-6258'], userB: ['ITS-6265', 'ITS-6258'], userD: ['ITS-6265', 'ITO-9647', 'ITS-6258'] };
   h.graphSees = { userA: true, userB: true, userD: false };
   h.graphFails = false;
+  h.graphRefuses = [];
   h.graphCalls = [];
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -148,6 +152,26 @@ describe('#11 conservative default and failure isolation (§11.4, §11.5)', () =
     expect(b.partial).toBe(true);
     expect(b.incidents.map((i) => i.source.id)).toEqual(['ITO-9647']);
     expect(b.resolutions.map((r) => r.source.id)).toEqual(['ITS-6258']);
+  });
+
+  it('when one project is refused, shows the teams of the project that answered and records twg:partial', async () => {
+    // ITS-6275 on the demo site: related incidents in ITS and ITO, and Teamwork Graph refusing the ITS lookup.
+    h.store.set('bundle:ITS-6265', {
+      ...storedBundle,
+      incidents: [
+        { source: ref('ITS-6286'), status: 'active', summary: 'Cannot connect to the VPN gateway from home', relevance: 0.7 },
+        ...storedBundle.incidents,
+      ],
+    });
+    h.canSee.userA = [...h.canSee.userA, 'ITS-6286'];
+    h.graphRefuses = [`ari:cloud:jira:${fixture.cloudId}:project/10002`];
+    const b = bundleOf(await as('userA'))!;
+    expect((b.teams ?? []).map((t) => [t.name, t.evidence])).toEqual([['Platform Support', 'Linked to the ITO project, where ITO-9647 is tracked']]);
+    expect(b.failures).toEqual([TWG_PARTIAL]);
+    expect(b.partial).toBe(true);
+    // ITS was tried 5 times, 300 ms apart (the intermittent refusal is retried), ITO once.
+    expect(h.graphCalls.filter((c) => c.spaceAri.endsWith('/10002'))).toHaveLength(5);
+    expect(h.graphCalls.filter((c) => c.spaceAri === ITO_ARI)).toHaveLength(1);
   });
 
   it('teams are never stored in the bundle', async () => {

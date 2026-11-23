@@ -10,12 +10,13 @@ const h = vi.hoisted(() => ({
   viewer: 'userA',
   canSee: {} as Record<string, string[]>,
   checkFails: false,
+  checkError: null as Error | null,
   checkCalls: [] as { viewer: string; keys: string[] }[],
   handlers: {} as Record<string, (req: unknown) => unknown>,
 }));
 
 // Teamwork Graph (step 11): no linked teams unless a test says otherwise; tests/integration/teams-authorization.test.ts covers teams.
-vi.mock('../../src/adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => new Map(keys.map((key) => [key, []])) }));
+vi.mock('../../src/adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => ({ teams: new Map(keys.map((key) => [key, []])), failed: [] }) }));
 vi.mock('@forge/kvs', () => ({
   kvs: {
     get: async (key: string) => structuredClone(h.store.get(key)),
@@ -38,6 +39,7 @@ vi.mock('@forge/resolver', () => ({
 vi.mock('../../src/adapters/jira', () => ({
   visibleIssueKeys: async (keys: string[]) => {
     h.checkCalls.push({ viewer: h.viewer, keys });
+    if (h.checkError) throw h.checkError;
     if (h.checkFails) throw new Error('jira-visibility-503');
     return new Set(keys.filter((k) => (h.canSee[h.viewer] ?? []).includes(k)));
   },
@@ -78,6 +80,7 @@ beforeEach(() => {
   h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010', savedAt: 't' }); // explicit site settings (Phase 5.5)
   h.checkCalls = [];
   h.checkFails = false;
+  h.checkError = null;
   h.canSee = {
     userA: ['ITS-6265', 'ITO-9647', 'ITO-9642', 'ITS-6258'], // ITS and ITO
     userB: ['ITS-6265', 'ITS-6258'], // ITS agent without ITO, as set up on the demo site
@@ -178,6 +181,17 @@ describe('#11 conservative default', () => {
     storeBundle();
     h.checkFails = true;
     expect(JSON.stringify(await as('userA'))).not.toContain('ITO-');
+  });
+
+  it('lets Forge\'s consent error through, so Forge can show "Allow access", and shows nothing stored', async () => {
+    // Seen live (2026-11-23): a viewer whose grant had lapsed got "not available" on every ticket, with no prompt.
+    storeBundle();
+    const consent = Object.assign(new Error('Authentication Required'), { name: 'NEEDS_AUTHENTICATION_ERR', status: 401, serviceKey: 'atlassian-token-service-key' });
+    h.checkError = consent;
+    await expect(as('userA')).rejects.toBe(consent);
+    h.checkError = Object.assign(new Error('NEEDS_AUTHENTICATION_ERR in the text only'), { name: 'Error' });
+    expect(await as('userA')).toEqual({ state: 'unavailable' });
+    h.checkError = null;
   });
 
   it('marks the response partial with auth:jira-check-failed when sources cannot be verified', async () => {

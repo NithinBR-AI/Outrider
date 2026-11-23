@@ -18,6 +18,8 @@ import { isBundleTicket, NOT_SET_UP_MESSAGE, RetrievalSettings, SiteSettings } f
 import { getSettings } from '../adapters/settings';
 import { Incident, PendingContext, Resolution, Ticket, ViewerBundle } from '../domain/types';
 import { viewerBundle } from '../resolvers/viewerContext';
+import { signalsForProjects } from '../resolvers/signals';
+import { ClusterSignal } from '../domain/cluster';
 import { enqueueTicketBuild } from '../pipeline/enqueue';
 
 /** Returned when the caller may not see the ticket, or it does not exist. The two are indistinguishable. */
@@ -205,4 +207,25 @@ export async function findRelatedIncidents(query: FindQuery): Promise<FindIncide
 export async function findSimilarResolutions(query: FindQuery): Promise<FindResolutionsResult> {
   const r = await findFor(query, (t, s) => searchResolutions(t, s), 'jira-resolutions');
   return isRefusal(r) ? r : { resolutions: r.items, partial: r.partial, failures: r.failures };
+}
+
+// ---- get-emerging-incidents (step 13, spec §14.9, §15) ----
+//
+// Active emerging-incident signals in the projects that get context, filtered for the caller exactly like the
+// panel (resolvers/signals.ts): a signal is returned only if the caller can see at least its threshold of
+// requests, and only with those requests. Advisory: a signal is never an incident (§14.10).
+
+// Verified via Rovo for teams that an agent overstates what an advisory record means; the same applies here.
+export const SIGNALS_NOTE =
+  'Each signal means several open requests share the same structured service and/or component within a short window. state "confirmed" only means both the service and the component match on every listed request; "uncertain" means one of them is missing on at least one request. Neither says how likely an incident is. It is advisory: no incident has been declared or created by Outrider. Recommend investigation; do not say an incident exists or is likely, and do not say one has not been declared "yet".';
+
+export type EmergingIncidentsResult = { signals: ClusterSignal[]; signalsNote?: string; partial: boolean; failures: string[] } | NotSetUp;
+
+/** Signals for one project (if given and set up for context) or for every project that gets context. */
+export async function getEmergingIncidents(projectKey?: string): Promise<EmergingIncidentsResult> {
+  const settings = await getSettings();
+  if (!settings) return NOT_SET_UP;
+  if (projectKey && !settings.bundleProjects.includes(projectKey)) return NOT_SET_UP;
+  const { signals, failure } = await signalsForProjects(projectKey ? [projectKey] : settings.bundleProjects);
+  return { signals, ...(signals.length > 0 ? { signalsNote: SIGNALS_NOTE } : {}), partial: !!failure, failures: failure ? [failure] : [] };
 }

@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
 // Explicit site settings (Phase 5.5), as on the demo site.
 const SETTINGS = { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affectedServicesField: 'customfield_10039', requestTypeField: 'customfield_10010' };
 // Teamwork Graph (step 11): no linked teams unless a test says otherwise; tests/integration/teams-authorization.test.ts covers teams.
-vi.mock('../../adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => new Map(keys.map((key) => [key, []])) }));
+vi.mock('../../adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => ({ teams: new Map(keys.map((key) => [key, []])), failed: [] }) }));
 vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys, getTicket: h.getTicket, searchIncidents: h.searchIncidents, searchResolutions: h.searchResolutions }));
 vi.mock('../../adapters/settings', () => ({ getSettings: h.getSettings }));
 vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
@@ -125,7 +125,7 @@ describe('bundle exists', () => {
     expect(r).not.toHaveProperty('buildId');
     expect(r).not.toHaveProperty('ticketFingerprint');
     expect(r).toMatchObject({ ticketKey: 'ITS-1', builtAt: 't', partial: false, failures: [] });
-    expect(Object.keys(r).sort()).toEqual(['articles', 'builtAt', 'failures', 'incidents', 'partial', 'resolutions', 'services', 'teams', 'ticketKey']);
+    expect(Object.keys(r).sort()).toEqual(['articles', 'builtAt', 'emergingSignals', 'failures', 'incidents', 'partial', 'resolutions', 'services', 'teams', 'ticketKey']);
   });
 
   it('keeps the build ID on the pending response, as the spec defines it', async () => {

@@ -15,8 +15,17 @@ import { Incident } from './types';
 export const MAX_TEAMS = 5;
 // Distinct projects looked up per read. Incidents arrive ranked, so these are the most relevant ones.
 export const MAX_TEAM_PROJECTS = 5;
-// Failure recorded when the Teamwork Graph lookup fails or runs out of time (§11.4: concise, no details).
+// Failure recorded when every Teamwork Graph lookup failed or ran out of time (§11.4: concise, no details).
 export const TWG_UNAVAILABLE = 'twg:unavailable';
+// Failure recorded when some projects answered and others did not (added 2026-11-23): the teams that were found
+// are shown, with a note that some could not be checked, so a missing team is never read as "none linked".
+export const TWG_PARTIAL = 'twg:partial';
+
+/** The failure to record for a teams lookup: none, some projects unanswered, or all of them. */
+export function teamsFailure(lookedUp: number, failed: number): string | undefined {
+  if (failed <= 0) return undefined;
+  return failed >= lookedUp ? TWG_UNAVAILABLE : TWG_PARTIAL;
+}
 
 const PROJECT_OF_KEY = /^([A-Z][A-Z0-9_]+)-\d+$/;
 
