@@ -107,9 +107,6 @@ export async function listClusterRecords(projectKey: string): Promise<ClusterRec
   return out;
 }
 
-export async function getClusterRecord(storageKey: string): Promise<ClusterRecord | undefined> {
-  return kvs.get<ClusterRecord>(storageKey);
-}
 
 export async function putClusterRecord(record: ClusterRecord): Promise<void> {
   await kvs.set(record.storageKey, record);

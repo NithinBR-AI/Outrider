@@ -14,7 +14,6 @@ import {
   DEFAULT_WINDOW_MINUTES,
   dismissRecord,
   encodeClusterKey,
-  isValidStorageKey,
   reconcileClusters,
   signalForViewer,
   staleRecords,
@@ -266,6 +265,9 @@ describe('cluster storage key (§18.7)', () => {
     expect(keys.size).toBe(4);
     expect(encodeClusterKey({ ...base, identityType: 'uncertain-entity-only', entityKind: 'asset', entityId: '-' })).toContain(':_2D:w');
   });
+
+  // Forge KVS key rule, from developer.atlassian.com/platform/forge/limits-kvs-ce/ (checked 2026-11-23).
+  const isValidStorageKey = (key: string): boolean => /^(?!\s+$)[a-zA-Z0-9:._\s\-#]+$/.test(key) && key.length <= 500;
 
   it('only produces keys Forge KVS accepts, for real ARIs, ISO timestamps and awkward characters', () => {
     const awkward = ['ari:cloud:graph::service/414c92ba-476b-40d4-b372-dc77303709e2/d93ef769-3160-46c8-a894-fb4f6dc8a48e', 'a_b%c/d e!~*()\'', 'Zürich ✓', '10014'];

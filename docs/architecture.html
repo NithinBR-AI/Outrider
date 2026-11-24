@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Outrider architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+  :root {
+    --bg: #0b1220; --panel: #0f1a2e; --card: #13223b; --border: #1f3354; --border-hi: #2c4a78;
+    --text: #e8eef8; --text-2: #a7b8d2; --text-3: #60789c;
+    --blue: #4c9aff; --teal: #2dd4bf; --purple: #a78bfa; --amber: #fbbf24; --red: #f87171;
+    --mono: 'JetBrains Mono', Consolas, monospace; --sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* The page is a fixed 1240 px wide (the PNG is rendered at that width) and centred in any wider window. */
+  html { background-color: var(--bg);
+    background-image: linear-gradient(rgba(76,154,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(76,154,255,0.035) 1px, transparent 1px);
+    background-size: 40px 40px; }
+  body { width: 1240px; margin: 0 auto; color: var(--text); font-family: var(--sans); padding: 38px 44px 30px; position: relative; }
+  .wrap { position: relative; }
+
+  /* Header, centred */
+  header { text-align: center; margin-bottom: 30px; }
+  .badges { display: flex; justify-content: center; gap: 10px; margin-bottom: 18px; }
+  .badge { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 2px; padding: 7px 14px; border-radius: 4px; }
+  .badge.main { background: var(--blue); color: #06101f; }
+  .badge.bonus { border: 1px solid var(--border-hi); color: var(--text-2); }
+  h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.5px; }
+  h1 .accent { color: var(--blue); }
+  .lede { color: var(--text-2); font-size: 15.5px; line-height: 1.55; max-width: 900px; margin: 12px auto 0; }
+  .stack { font-family: var(--mono); font-size: 11px; color: var(--text-3); letter-spacing: 1px; margin-top: 12px; }
+
+  /* Symmetric: inputs on the left, the pipeline centred under the title, outputs on the right. */
+  .grid { display: grid; grid-template-columns: 220px 1fr 220px; gap: 20px; align-items: start; }
+
+  /* Pipeline */
+  .pipeline { border: 1px solid var(--border-hi); border-radius: 14px; background: var(--panel); padding: 26px 22px 20px 18px; position: relative; }
+  .ptag { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--blue); color: #06101f; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 4px; }
+  .phase { display: grid; grid-template-columns: 30px 1fr; gap: 14px; }
+  .rail { border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .rail span { writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 2px; }
+  .rail.app { background: rgba(76,154,255,0.12); border: 1px solid rgba(76,154,255,0.4); color: var(--blue); }
+  .rail.viewer { background: rgba(45,212,191,0.10); border: 1px solid rgba(45,212,191,0.4); color: var(--teal); }
+  .steps { display: flex; flex-direction: column; gap: 0; }
+
+  .step { display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--blue); border-radius: 9px; padding: 13px 16px 12px 14px; }
+  .viewer-steps .step { border-left-color: var(--teal); }
+  .step.gate { border-left-color: var(--red); background: linear-gradient(90deg, rgba(248,113,113,0.08), var(--card) 45%); border-color: rgba(248,113,113,0.35); }
+  .icon { width: 40px; height: 40px; border-radius: 9px; background: #0c1628; border: 1px solid var(--border-hi); display: flex; align-items: center; justify-content: center; font-size: 19px; }
+  .step h3 { font-size: 15px; font-weight: 700; display: flex; align-items: baseline; gap: 10px; }
+  .step h3 small { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--red); letter-spacing: 1.5px; }
+  .step p { font-size: 12.6px; line-height: 1.5; color: var(--text-2); margin-top: 4px; }
+  .tags { margin-top: 7px; font-family: var(--mono); font-size: 10.5px; color: var(--text-3); }
+  .tags b { color: var(--blue); font-weight: 600; }
+  .viewer-steps .tags b { color: var(--teal); }
+  .gate .tags b { color: var(--red); }
+  .conn { text-align: center; color: var(--text-3); font-size: 13px; line-height: 1; padding: 5px 0; }
+
+  .handoff { display: flex; align-items: center; gap: 12px; margin: 12px 0 12px 44px; }
+  .handoff::before, .handoff::after { content: ''; flex: 1; border-top: 1px dashed var(--border-hi); }
+  .handoff div { border: 1px dashed var(--border-hi); border-radius: 7px; padding: 7px 14px; background: #0d1729; text-align: center; }
+  .handoff b { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; }
+  .handoff span { display: block; font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
+
+  /* Side column */
+  .side-h { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); letter-spacing: 1.5px; margin: 0 0 8px 2px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--blue); border-radius: 8px; padding: 10px 13px; margin-bottom: 9px; }
+  .card.ext { border-left-color: var(--amber); }
+  .card.out { border-left-color: var(--teal); }
+  .card.kv { border-left-color: var(--text-3); }
+  .card h4 { font-size: 13.5px; font-weight: 700; }
+  .card p { font-size: 11.8px; color: var(--text-2); margin-top: 3px; line-height: 1.45; }
+  .gap { height: 12px; }
+
+  /* Bottom bands */
+  .band { border-radius: 12px; padding: 18px 18px 14px; position: relative; margin-top: 30px; text-align: center; }
+  .band .btag { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 4px; }
+  .band .lead { font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+  .chips { display: flex; justify-content: center; align-items: stretch; gap: 8px; }
+  .chip { flex: 1; border-radius: 8px; padding: 10px 10px; background: rgba(11,18,32,0.7); }
+  .chip b { display: block; font-size: 13px; font-weight: 700; }
+  .chip span { display: block; font-size: 11.8px; color: var(--text-2); margin-top: 3px; line-height: 1.4; }
+  .chip-arrow { display: flex; align-items: center; color: var(--text-3); }
+  .band.cluster { border: 1px solid rgba(167,139,250,0.45); background: rgba(167,139,250,0.05); }
+  .band.cluster .btag { background: var(--purple); color: #140a2e; }
+  .band.cluster .chip { border: 1px solid rgba(167,139,250,0.3); }
+  .band.cluster .chip b { color: var(--purple); }
+  .band.safety { border: 1px solid rgba(248,113,113,0.4); background: rgba(248,113,113,0.05); }
+  .band.safety .btag { background: var(--bg); border: 1px solid rgba(248,113,113,0.6); color: var(--red); }
+  .band.safety .chip { border: 1px solid rgba(248,113,113,0.25); }
+  .band.safety .chip b { color: var(--red); font-family: var(--mono); font-size: 12px; }
+
+  .legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 24px; border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; margin-top: 24px; font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 7px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="badges">
+    <span class="badge main">CODEGEIST 2026 · APPS FOR BUSINESS TEAMS</span>
+    <span class="badge bonus">BONUS · TEAMWORK GRAPH</span>
+    <span class="badge bonus">BONUS · ATLASSIAN MCP</span>
+  </div>
+  <h1>Outrider — <span class="accent">context in place</span> before the agent asks</h1>
+  <p class="lede">When a ticket changes, Outrider gathers the incidents, past fixes, runbooks and teams that matter, writes a summary
+    whose every claim is matched to its source, and shows each person only what they are allowed to see.</p>
+  <p class="stack">Forge · Jira Service Management · Confluence · Rovo MCP · Teamwork Graph · Amazon Bedrock · Jina · Forge KVS</p>
+</header>
+
+<div class="grid">
+  <aside>
+    <div class="side-h">ATLASSIAN SOURCES</div>
+    <div class="card"><h4>Jira Service Management</h4><p>The ticket, incidents and resolved tickets in the chosen projects</p></div>
+    <div class="card"><h4>Confluence</h4><p>Runbooks and articles in the chosen spaces</p></div>
+    <div class="card"><h4>Teamwork Graph</h4><p>Teams linked to a project, read as the viewer</p></div>
+    <div class="gap"></div>
+    <div class="side-h">OUTSIDE ATLASSIAN</div>
+    <div class="card ext"><h4>Amazon Bedrock</h4><p>Writes the summary claims, only when sources changed</p></div>
+    <div class="card ext"><h4>Jina AI</h4><p>Embeddings for ranking; inputs never used for training</p></div>
+  </aside>
+
+  <main class="pipeline">
+    <span class="ptag">ONE PIPELINE · BUILT ONCE, CHECKED ON EVERY READ</span>
+
+    <div class="phase">
+      <div class="rail app"><span>AS THE APP · WHEN A TICKET CHANGES</span></div>
+      <div class="steps">
+        <div class="step"><div class="icon">⚡</div><div>
+          <h3>Trigger</h3>
+          <p>A ticket in a configured project is created or updated. The event only queues a build, so Jira never waits, and one build runs per ticket at a time.</p>
+          <div class="tags"><b>Jira trigger</b> · Forge queue · per-ticket lock · newer change wins</div></div></div>
+        <div class="conn">↓</div>
+        <div class="step"><div class="icon">🔍</div><div>
+          <h3>Retrieve</h3>
+          <p>Related incidents, past resolutions and runbooks are fetched live from the projects and Confluence spaces the admin chose. There is no index to go stale.</p>
+          <div class="tags"><b>JQL</b> · <b>CQL</b> · bounded candidate sets</div></div></div>
+        <div class="conn">↓</div>
+        <div class="step"><div class="icon">⇅</div><div>
+          <h3>Rank</h3>
+          <p>Distinctive keywords pick the candidates; embeddings re-rank them and drop weak matches. One fixed formula, so the same data always gives the same order.</p>
+          <div class="tags"><b>Jina v5</b> · 60% floor · keyword fallback</div></div></div>
+        <div class="conn">↓</div>
+        <div class="step"><div class="icon">✎</div><div>
+          <h3>Generate</h3>
+          <p>The model writes short claims, each citing one source in that source's own words. They are stored unverified, with links and short excerpts, never full pages.</p>
+          <div class="tags"><b>Qwen3-235B</b> on Amazon Bedrock · DeepSeek v3.2 fallback</div></div></div>
+      </div>
+    </div>
+
+    <div class="handoff"><div><b>CONTEXT BUNDLE IN FORGE KVS</b><span>stored once per ticket · nothing shown until it passes the next step</span></div></div>
+
+    <div class="phase">
+      <div class="rail viewer"><span>AS THE VIEWER · EVERY READ</span></div>
+      <div class="steps viewer-steps">
+        <div class="step gate"><div class="icon">🛡</div><div>
+          <h3>Authorize and verify <small>THE SAFETY BOUNDARY</small></h3>
+          <p>Jira and Confluence are checked as the person reading; anything they can't see is left out without a trace. Each claim must match its source's current text word for word, or it is rejected and counted.</p>
+          <div class="tags"><b>asUser()</b> · fail closed · verbatim span · revoked access applies at once</div></div></div>
+        <div class="conn">↓</div>
+        <div class="step"><div class="icon">▤</div><div>
+          <h3>Deliver</h3>
+          <p>The issue panel and four Rovo MCP tools get the same filtered context, plus the teams linked to each incident's project and any emerging-incident signal on the ticket.</p>
+          <div class="tags"><b>jira:issueContext</b> · <b>rovo:mcp</b> · Teamwork Graph, looked up live</div></div></div>
+      </div>
+    </div>
+  </main>
+
+  <aside>
+    <div class="side-h">WHERE IT SHOWS UP</div>
+    <div class="card out"><h4>JSM issue panel</h4><p>Summary with its sources, incidents, teams, fixes, runbooks</p></div>
+    <div class="card out"><h4>Rovo agents</h4><p>Four MCP tools, filtered for whoever asks</p></div>
+    <div class="card out"><h4>Settings page</h4><p>Projects, spaces, fields and clustering, per site</p></div>
+    <div class="gap"></div>
+    <div class="side-h">STORAGE</div>
+    <div class="card kv"><h4>Forge KVS</h4><p>Bundles, signals and settings, never full pages</p></div>
+  </aside>
+</div>
+
+<section class="band cluster">
+  <span class="btag">EMERGING INCIDENTS · REQUEST CLUSTERING</span>
+  <p class="lead">When several open requests report the same thing, Outrider flags it. Advisory only: it never creates an incident.</p>
+  <div class="chips">
+    <div class="chip"><b>Watch</b><span>A pass after ticket events, and every hour</span></div>
+    <div class="chip-arrow">→</div>
+    <div class="chip"><b>Group</b><span>Same affected service and component, from fields, never free text</span></div>
+    <div class="chip-arrow">→</div>
+    <div class="chip"><b>Signal</b><span>5 requests in 90 minutes; confirmed or uncertain</span></div>
+    <div class="chip-arrow">→</div>
+    <div class="chip"><b>Show</b><span>A card on each request and in Rovo, until it ends or is dismissed</span></div>
+  </div>
+</section>
+
+<section class="band safety">
+  <span class="btag">SAFETY BOUNDARIES</span>
+  <div class="chips">
+    <div class="chip"><b>Read as the viewer</b><span>Context is filtered for each person on every read</span></div>
+    <div class="chip"><b>Evidence gate</b><span>The model proposes; the verifier decides what is shown</span></div>
+    <div class="chip"><b>Fail closed</b><span>A failed check shows nothing, and never claims "none"</span></div>
+    <div class="chip"><b>Minimal data out</b><span>Only ticket text and short excerpts; no account IDs</span></div>
+  </div>
+</section>
+
+<div class="legend">
+  <span><span class="sw" style="background:var(--blue)"></span>As the app</span>
+  <span><span class="sw" style="background:var(--teal)"></span>As the viewer</span>
+  <span><span class="sw" style="background:var(--purple)"></span>Request clustering</span>
+  <span><span class="sw" style="background:var(--amber)"></span>Outside Atlassian</span>
+  <span><span class="sw" style="background:var(--red)"></span>Safety boundary</span>
+</div>
+
+</div>
+</body>
+</html>

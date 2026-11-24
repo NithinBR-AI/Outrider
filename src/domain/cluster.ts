@@ -124,13 +124,10 @@ export function canonicalRequest(r: ClusterRequest): ClusterRequest {
 // Forge KVS keys only allow [a-zA-Z0-9:._\s-#], so a segment keeps letters, digits and "." and escapes every other
 // byte as "_XX" (percent-encoding with "_" in place of "%"). "_" itself is always escaped, so decoding is exact,
 // and "-" (the absent marker) and ":" (the separator) never appear inside an encoded value.
-const KVS_KEY_PATTERN = /^(?!\s+$)[a-zA-Z0-9:._\s\-#]+$/;
 const hex = (c: string): string => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`;
 const enc = (v: string | undefined): string =>
   v === undefined ? '-' : encodeURIComponent(v).replace(/[-_!~*'()]/g, hex).replace(/%/g, '_');
 const dec = (v: string): string | undefined => (v === '-' ? undefined : decodeURIComponent(v.replace(/_/g, '%')));
-/** True when a string is accepted as a Forge KVS key. */
-export const isValidStorageKey = (key: string): boolean => KVS_KEY_PATTERN.test(key) && key.length <= 500;
 
 type KeyParts = { projectKey: string; identityType: IdentityType; serviceId?: string; entityKind?: EntityKind; entityId?: string; windowStart: string };
 

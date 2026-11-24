@@ -163,13 +163,6 @@ export type BuildStatus = {
   error?: string;
 };
 
-export type IndexRecord = {
-  docKey: string;
-  sourceRef: SourceRef;
-  text: string;
-  vector?: number[];
-  indexedAt: string;
-};
 
 export type PendingContext = {
   status: 'pending';
