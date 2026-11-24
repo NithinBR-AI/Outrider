@@ -53,6 +53,27 @@ Rovo agents get the same context through the **Outrider MCP** server:
 
 ---
 
+## Outrider and Rovo
+
+Outrider works alongside Rovo rather than replacing it. Rovo answers questions when someone asks. Outrider gathers a
+ticket's context from Jira, Confluence and Teamwork Graph as soon as the ticket changes, checks every summary claim
+against its source, and has it waiting in the issue panel. Rovo agents can then use that same checked context
+through Outrider's MCP tools.
+
+| What a ticket gets | How Outrider provides it |
+|---|---|
+| **Context before anyone asks** | Built when a ticket is created or changed, so it is already in the issue panel when an agent opens the ticket, with no question to type |
+| **Related incidents** | Open and recently resolved `[System] Incident` issues from the projects an admin chose, matched on the ticket's own words and re-ranked with embeddings |
+| **Past resolutions** | Resolved tickets with similar symptoms or the same requester, with the comment that describes how each was fixed |
+| **Knowledge articles** | Runbooks and how-to pages from the Confluence spaces an admin chose, matched on the ticket's rare words and re-ranked with embeddings |
+| **Teams involved** | From Teamwork Graph: the teams linked to the project of each related incident, looked up live as the viewer and never stored |
+| **A checked summary** | Short claims, each citing one of the sources above, shown only with a verbatim match in that source's current text; rejected claims are counted and shown behind "see why" |
+| **Emerging incidents** | A signal when several open requests share the same Affected service and Component within a short window, raised from those fields and never from similar wording |
+| **Only what you can see** | Everything above is filtered for each viewer on every read; a revoked permission applies on the next read, without a rebuild |
+| **The same, in Rovo** | Four MCP tools give any Rovo agent the same checked, filtered context for the person asking |
+
+---
+
 ## Built on Atlassian
 
 | Forge module or platform feature | What Outrider uses it for |
@@ -113,8 +134,11 @@ the card is marked **Uncertain**.
 
 ### Ask Rovo
 
+The MCP tools need a site with Rovo; the demo site has Rovo Enterprise. On a site without Rovo, the panel and the
+settings page work the same, and only this part is unavailable.
+
 1. On any Jira page click **Ask Rovo** → agent selector → **Create agent** → **Start from blank**.
-2. **+ Add tools** → **outrider** under Connected apps → add the four tools (marked "(development)" on the demo
+2. **+ Add tools** → **Outrider** under Connected apps → add the four tools (marked "(development)" on the demo
    site). An agent only uses the tools added to it.
 3. Click **Test** and try:
    - `Use the get-ticket-context tool with ticketKey ITS-6273`
@@ -256,7 +280,13 @@ Outrider calls two external services. The install screen lists both domains.
 
 Forge KVS only: one context bundle per ticket (source links, excerpts up to 600 characters, unverified claims),
 build status and locks, emerging-incident records (service and component IDs and names, request keys, window; deleted 7 days
-after the window ends) and the site settings. Never full page bodies, and never teams.
+after the window ends) and the site settings. Never full page bodies, never teams, and no Atlassian account IDs:
+the build status records only what started a build (a Jira event or a Rovo request), so there is nothing to report
+under Atlassian's [user privacy guide](https://developer.atlassian.com/platform/forge/user-privacy-guidelines/).
+Stored excerpts are kept as written, so they can contain a name someone typed into a ticket or page.
+
+The full data notice, including how long each record is kept and how to remove it, is in [`TERMS.md`](TERMS.md),
+sections 5 to 9.
 
 ---
 
@@ -372,14 +402,14 @@ You must be a **Jira admin** on the site. The page itself opens in Jira's settin
 Any of these opens it:
 
 - **From the Outrider panel:** on any ticket, while Outrider is not set up, the panel says "Outrider isn't set up
-  for this project yet" with a link, **Open Outrider settings**.
+  for this project yet" with a link, **Open Outrider settings** (Jira admins only).
 - **From Jira's app list:**
   1. In Jira, click the **cog icon (Settings)** at the top right.
   2. Under **Jira admin settings**, click **Marketplace apps**.
   3. The page says "App management has moved to Administration". Click **Take me there**.
   4. You are now on **Connected apps** in Atlassian Administration. In the **Installed apps** list, find
-     **outrider**. It appears as a group with one row per product it is installed in.
-  5. On an **outrider** row, click **⋯** at the right end and choose **Configure**. (On the demo site only one
+     **Outrider**. It appears as a group with one row per product it is installed in.
+  5. On an **Outrider** row, click **⋯** at the right end and choose **Configure**. (On the demo site only one
      of the rows has a **⋯** menu; that is the one.)
   6. The Outrider settings page opens in Jira.
 - **Direct link**, replacing `<your-site>` with your site name:
@@ -423,12 +453,17 @@ Under **Knowledge articles (Confluence)**, choose the spaces that hold your runb
 spaces to search for runbooks and articles**. On the demo site this is `ITO`. With no spaces chosen, the panel's
 Knowledge articles section stays empty and everything else works.
 
-Outrider sees only the Confluence spaces it is a member of, so the list shows only those. To add a space:
+The list shows every current space Outrider can view, of any type (global, collaboration, knowledge base and so
+on), except personal spaces. Outrider can view a space when **All Confluence users** have access to it, or when the
+app has been added to it; a restricted space has to be added. To add a space that is missing:
 
-1. In Confluence, open the space and go to **Space settings** → **Members** (or the space's permissions page).
-2. Add the **Outrider** app as a member with view access. On the demo site both Outrider apps were added, the
-   production one and the development one.
+1. In Confluence, open the space and go to **Space settings** → **Users** (or **Members**).
+2. Click **Add people and agents**, search for **Outrider** and give it the lowest role that can view pages. Two
+   **Outrider** entries can appear: one for its Jira install and one for its Confluence install. Add both.
 3. Reload the Outrider settings page; the space now appears in the list.
+
+Verified on two sites: on the demo site the `ITO` space needed Outrider added; on a second site, two spaces open to
+All Confluence users (types onboarding and collaboration) were listed without adding it.
 
 New access can take **10 to 15 minutes** to reach Confluence search (measured on the demo site: about 13 minutes).
 Until then, Outrider lists the space's most recently modified pages instead, so articles still appear.
@@ -489,7 +524,7 @@ Tickets in a project you remove show "isn't set up" again; their stored context 
 | The page shows "Outrider could not read projects and fields from Jira just now" | Jira did not answer | Reload the page |
 | No incidents ever appear | The searched projects have no issues of type [System] Incident | Add the project where incidents are tracked to "Projects to search" |
 | Knowledge articles always shows "No items" | No Confluence spaces are chosen, Outrider is not a member of the space, or the ticket shares no distinctive words with any page | Choose a space in step 4, add Outrider as a member of it, then change a field on the ticket to rebuild |
-| A space is missing from the Confluence list | Outrider is not a member of that space | Add Outrider in the space's settings, then reload the settings page |
+| A space is missing from the Confluence list | The space is restricted and Outrider has not been added to it, or it is a personal space | Add both Outrider entries in the space's settings (step 4), then reload the settings page |
 | Teams involved says "No teams linked to this project's space" | No team is linked to the related incident's project, or the admin declined the Teamwork Graph scopes | Link a team to the project (step 5), or check Outrider's permissions under Connected apps |
 | Teams involved says "Teams couldn't be checked right now" or "Some teams couldn't be checked right now" | Teamwork Graph refused or did not answer in time; on demo sites it intermittently refuses valid reads | Press **Refresh**; teams are looked up again on every read |
 | The panel shows Forge's "Allow access" prompt | You have not granted Outrider access to act as you, or the grant lapsed | Click it and approve; the panel then loads |
@@ -603,4 +638,4 @@ Outrider/
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Terms of use and data handling: [TERMS.md](TERMS.md).

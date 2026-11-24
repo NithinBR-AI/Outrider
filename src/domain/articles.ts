@@ -64,6 +64,10 @@ export function articleKind(labels: string[], title = ''): Article['kind'] {
  * a word found in most candidates ("log", "page", "connection") counts for little, a word found in one ("vpn",
  * "cache") counts for a lot. The weight is always positive, so a single candidate still scores. Computed over this
  * build's candidates only: deterministic and no stored index.
+ *
+ * A keyword that no candidate contains is left out. It cannot tell candidates apart, yet it had the highest
+ * weight and diluted every score: on a second site (2026-11-24), OD-2's long description left 10 of its 20
+ * keywords in no page, and the matching Auth runbook scored 0.18 among three runbooks, below MIN_ARTICLE_SCORE.
  */
 export function scoreArticleCandidates(keywords: TicketKeywords, texts: Map<string, string>): Map<string, number> {
   const words = new Map([...texts].map(([id, text]) => [id, new Set(tokenize(text))]));
@@ -72,7 +76,7 @@ export function scoreArticleCandidates(keywords: TicketKeywords, texts: Map<stri
   for (const [k, w] of keywords) {
     let df = 0;
     for (const set of words.values()) if (set.has(k)) df++;
-    weights.set(k, w * Math.log((n + 1) / (df + 0.5)));
+    if (df > 0) weights.set(k, w * Math.log((n + 1) / (df + 0.5)));
   }
   let total = 0;
   for (const w of weights.values()) total += w;

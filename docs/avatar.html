@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Outrider avatar</title>
+<style>
+  /* Rendered to docs/avatar.png at 512 x 512 (Edge headless). Same palette as docs/architecture.html. */
+  html, body { margin: 0; padding: 0; width: 512px; height: 512px; overflow: hidden; background: #0b1220; }
+</style>
+</head>
+<body>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#13223b"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7ab4ff"/>
+      <stop offset="1" stop-color="#2f7de1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- The "O": a ring centred slightly low-left, open towards the top right. -->
+  <g transform="translate(-14 14)">
+    <path d="M 389.9 215.1 A 140 140 0 1 1 296.9 122.1" fill="none" stroke="url(#ring)" stroke-width="56" stroke-linecap="round"/>
+  </g>
+  <!-- The outrider: one rider just ahead of the opening, in the read-as-viewer teal of the diagram. -->
+  <circle cx="392" cy="120" r="40" fill="#2dd4bf"/>
+</svg>
+</body>
+</html>

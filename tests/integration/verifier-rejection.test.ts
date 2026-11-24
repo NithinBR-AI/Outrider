@@ -195,7 +195,7 @@ describe('verifier on the read path', () => {
 
   it('MCP returns the same verified claims and rejections as the panel, annotated for agents', async () => {
     const panel = (await panelSummary())!;
-    const mcp = (await mcpGetTicketContext('ITS-6265', 'user-a')) as { summary?: McpSummary };
+    const mcp = (await mcpGetTicketContext('ITS-6265')) as { summary?: McpSummary };
     expect(mcp.summary!.claims).toEqual(panel.claims);
     expect(mcp.summary!.unsupportedClaims.map((u) => u.text)).toEqual(panel.rejected.map((r) => r.text));
     expect(mcp.summary!.unsupportedClaims).toEqual([{ text: REWORDED, reason: 'no-matching-span', note: UNSUPPORTED_CLAIM_NOTE }]);
@@ -214,7 +214,7 @@ describe('verifier on the read path', () => {
 
   it('MCP gives a viewer without access to the cited sources no summary', async () => {
     h.canSee = new Set(['ITS-6265']);
-    const mcp = (await mcpGetTicketContext('ITS-6265', 'user-b')) as { summary?: unknown };
+    const mcp = (await mcpGetTicketContext('ITS-6265')) as { summary?: unknown };
     expect(mcp.summary).toBeUndefined();
   });
 

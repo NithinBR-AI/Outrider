@@ -47,7 +47,7 @@ const status = (overrides: Partial<BuildStatus> = {}): BuildStatus => ({
   buildId: 'build-a',
   requestedAt: '2026-11-20T10:00:00.000Z',
   status: 'queued',
-  actor: { accountId: 'user-1', source: 'jira-event' },
+  actor: { source: 'jira-event' },
   ...overrides,
 });
 
@@ -86,7 +86,7 @@ describe('updateStatusIf (best-effort guard, spec §6.2)', () => {
     await updateStatusIf('ITS-1', 'build-a', ['queued'], { status: 'building' });
     const s = (await getStatus('ITS-1'))!;
     expect(s.requestedAt).toBe('2026-11-20T10:00:00.000Z');
-    expect(s.actor.accountId).toBe('user-1');
+    expect(s.actor).toEqual({ source: 'jira-event' });
   });
 
   it('does not write when a newer build owns the status', async () => {

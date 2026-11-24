@@ -138,6 +138,23 @@ describe('rarity-weighted relevance (scoreArticleCandidates, relatedArticleIds)'
     expect(scoreArticleCandidates(new Map([['vpn', 1]]), new Map()).size).toBe(0);
   });
 
+  it('ignores ticket keywords no candidate contains, so a long description does not hide the right runbook', () => {
+    // Second site (2026-11-24): OD-2 against the three runbooks in its IKB space. Half of its 20 keywords
+    // ("regions", "investigating", "utc", ...) appear in no page; counted in the denominator, they left the Auth
+    // runbook at 0.18, below MIN_ARTICLE_SCORE, so the panel showed no article.
+    const second: any = JSON.parse(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'confluence-second-site.json'), 'utf8'));
+    const keywords = extractKeywords(second.ticket.summary, second.ticket.description);
+    const texts = new Map<string, string>(Object.entries(second.pages).map(([id, p]: [string, any]) => [id, `${p.title}\n${storageToText(p.storage)}`]));
+    const scores = scoreArticleCandidates(keywords, texts);
+    const title = (id: string) => second.pages[id].title;
+    expect([...relatedArticleIds(scores)].map(title)).toEqual(['Auth Service Troubleshooting Runbook']);
+    expect(scores.get('4030465')!).toBeGreaterThan(0.6);
+    // The other two still fall well below the relative floor.
+    for (const id of ['4161537', '4489217']) expect(scores.get(id)!).toBeLessThan(ARTICLE_RELATIVE_FLOOR * scores.get('4030465')!);
+    // No keyword in any candidate: every score is 0, not NaN.
+    expect([...scoreArticleCandidates(new Map([['zzzunmatched', 1]]), texts).values()]).toEqual([0, 0, 0]);
+  });
+
   it('keeps candidates at or above both the minimum score and the relative floor', () => {
     expect(MIN_ARTICLE_SCORE).toBe(0.2);
     expect(ARTICLE_RELATIVE_FLOOR).toBe(0.6);

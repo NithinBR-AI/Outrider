@@ -118,8 +118,9 @@ export type ViewerBundle = Omit<ContextBundle, 'summary'> & {
   emergingSignals?: ClusterSignal[];
 };
 
+// What started a build or pass. No account ID: nothing read it, and storing one would make Outrider store user
+// personal data (Atlassian's user privacy guide for Forge apps). Removed 2026-11-24.
 export type ActorContext = {
-  accountId?: string;
   source: 'jira-event' | 'confluence-event' | 'unknown';
 };
 

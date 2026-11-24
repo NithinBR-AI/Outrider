@@ -115,9 +115,9 @@ describe('two-viewer article isolation (security test #1, Confluence)', () => {
 
   it('MCP get-ticket-context applies the same filter per caller', async () => {
     h.viewer = 'userA';
-    expect(((await getTicketContext('ITS-6265', 'userA')) as ViewerBundle).articles).toHaveLength(2);
+    expect(((await getTicketContext('ITS-6265')) as ViewerBundle).articles).toHaveLength(2);
     h.viewer = 'userB';
-    const b = (await getTicketContext('ITS-6265', 'userB')) as ViewerBundle;
+    const b = (await getTicketContext('ITS-6265')) as ViewerBundle;
     expect(b.articles).toEqual([]);
     expect(JSON.stringify(b)).not.toContain('restricted ITO text');
   });

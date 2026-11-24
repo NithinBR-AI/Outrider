@@ -112,7 +112,7 @@ describe('#4 MCP caller isolation', () => {
 
   it('a different caller does not inherit the build actor', async () => {
     storeBundle();
-    h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { accountId: USER_A, source: 'jira-event' } });
+    h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { source: 'jira-event' } });
     const json = JSON.stringify(await call(USER_B));
     expect(json).not.toContain('restricted ITO text');
     expect(json).not.toContain('ITO-96');
@@ -174,7 +174,8 @@ describe('cold start for an authorized caller (§15.1)', () => {
     const r = await call(USER_A);
     expect(r).toMatchObject({ status: 'pending', ticketKey: 'ITS-6265' });
     expect(h.pushes).toHaveLength(1);
-    expect(h.pushes[0].body).toMatchObject({ kind: 'jira-ticket', ticketKey: 'ITS-6265', actor: { accountId: USER_A } });
+    expect(h.pushes[0].body).toMatchObject({ kind: 'jira-ticket', ticketKey: 'ITS-6265', actor: { source: 'unknown' } });
+    expect(JSON.stringify(h.pushes[0].body)).not.toContain(USER_A); // the caller is never stored with the build
     expect((r as { buildId: string }).buildId).toBe((h.pushes[0].body as { buildId: string }).buildId);
   });
 
@@ -226,7 +227,9 @@ describe('inputs never authorize (§15.5)', () => {
 
   it('records the real caller, not an input account ID, as the actor of a queued build', async () => {
     await call(USER_B, { ticketKey: 'ITS-6265', accountId: USER_A });
-    expect(h.pushes[0].body).toMatchObject({ actor: { accountId: USER_B } });
+    // Neither the forged input nor the real caller is stored with the build.
+    expect(JSON.stringify(h.pushes[0].body)).not.toContain(USER_A);
+    expect(JSON.stringify(h.pushes[0].body)).not.toContain(USER_B);
   });
 
   it('rejects input that is not an issue key before it reaches Jira', async () => {

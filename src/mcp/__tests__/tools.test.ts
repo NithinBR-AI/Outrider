@@ -56,7 +56,7 @@ beforeEach(() => {
 describe('authorization gate', () => {
   it('ticket not visible: not-accessible, and nothing is read or queued', async () => {
     h.visibleIssueKeys.mockImplementation(sees());
-    expect(await getTicketContext('ITS-1', 'caller')).toEqual({ status: 'not-accessible', ticketKey: 'ITS-1', message: NOT_ACCESSIBLE_MESSAGE });
+    expect(await getTicketContext('ITS-1')).toEqual({ status: 'not-accessible', ticketKey: 'ITS-1', message: NOT_ACCESSIBLE_MESSAGE });
     expect(h.getBundle).not.toHaveBeenCalled();
     expect(h.getStatus).not.toHaveBeenCalled();
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
@@ -64,14 +64,14 @@ describe('authorization gate', () => {
 
   it('ticket check fails: not-accessible (fails closed), nothing read or queued', async () => {
     h.visibleIssueKeys.mockRejectedValue(new Error('jira-visibility-503'));
-    expect(await getTicketContext('ITS-1', 'caller')).toMatchObject({ status: 'not-accessible' });
+    expect(await getTicketContext('ITS-1')).toMatchObject({ status: 'not-accessible' });
     expect(h.getBundle).not.toHaveBeenCalled();
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
   });
 
   it('checks only the ticket in the first call', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
-    await getTicketContext('ITS-1', 'caller');
+    await getTicketContext('ITS-1');
     expect(h.visibleIssueKeys.mock.calls[0][0]).toEqual(['ITS-1']);
   });
 });
@@ -83,18 +83,19 @@ describe('no bundle yet', () => {
 
   it.each(['queued', 'building'] as const)('build %s: returns pending for that build, queues nothing', async (s) => {
     h.getStatus.mockResolvedValue(status(s));
-    expect(await getTicketContext('ITS-1', 'caller')).toEqual({ status: 'pending', ticketKey: 'ITS-1', buildId: 'b-flight', requestedAt: '2026-11-21T04:00:00.000Z', message: PENDING_MESSAGE });
+    expect(await getTicketContext('ITS-1')).toEqual({ status: 'pending', ticketKey: 'ITS-1', buildId: 'b-flight', requestedAt: '2026-11-21T04:00:00.000Z', message: PENDING_MESSAGE });
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
   });
 
   it('no status: queues a build attributed to the caller and returns pending for it', async () => {
-    expect(await getTicketContext('ITS-1', 'caller-1')).toEqual({ status: 'pending', ticketKey: 'ITS-1', buildId: 'b-new', requestedAt: '2026-11-21T04:05:00.000Z', message: PENDING_MESSAGE });
-    expect(h.enqueueTicketBuild).toHaveBeenCalledWith('ITS-1', { accountId: 'caller-1', source: 'unknown' });
+    expect(await getTicketContext('ITS-1')).toEqual({ status: 'pending', ticketKey: 'ITS-1', buildId: 'b-new', requestedAt: '2026-11-21T04:05:00.000Z', message: PENDING_MESSAGE });
+    // The caller is never stored with the build (user privacy guide: no stored account IDs).
+    expect(h.enqueueTicketBuild).toHaveBeenCalledWith('ITS-1', { source: 'unknown' });
   });
 
   it.each(['failed', 'enqueue_failed', 'complete', 'superseded'] as const)('last build %s without a bundle: queues a fresh build', async (s) => {
     h.getStatus.mockResolvedValue(status(s));
-    expect(await getTicketContext('ITS-1', 'caller')).toMatchObject({ status: 'pending', buildId: 'b-new' });
+    expect(await getTicketContext('ITS-1')).toMatchObject({ status: 'pending', buildId: 'b-new' });
     expect(h.enqueueTicketBuild).toHaveBeenCalledTimes(1);
   });
 });
@@ -106,7 +107,7 @@ describe('bundle exists', () => {
 
   it('returns it filtered for the caller', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITS-2'));
-    const r = (await getTicketContext('ITS-1', 'caller')) as ContextBundle;
+    const r = (await getTicketContext('ITS-1')) as ContextBundle;
     expect(r.incidents).toEqual([]);
     expect(r.resolutions.map((x) => x.source.id)).toEqual(['ITS-2']);
     expect(r.partial).toBe(false);
@@ -115,13 +116,13 @@ describe('bundle exists', () => {
 
   it('checks the sources in a second call, after the ticket', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITO-1', 'ITS-2'));
-    await getTicketContext('ITS-1', 'caller');
+    await getTicketContext('ITS-1');
     expect(h.visibleIssueKeys.mock.calls[1][0]).toEqual(['ITO-1', 'ITS-2']);
   });
 
   it('leaves out internal bookkeeping fields and keeps what an agent needs', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITO-1', 'ITS-2'));
-    const r = (await getTicketContext('ITS-1', 'caller')) as Record<string, unknown>;
+    const r = (await getTicketContext('ITS-1')) as Record<string, unknown>;
     expect(r).not.toHaveProperty('buildId');
     expect(r).not.toHaveProperty('ticketFingerprint');
     expect(r).toMatchObject({ ticketKey: 'ITS-1', builtAt: 't', partial: false, failures: [] });
@@ -131,7 +132,7 @@ describe('bundle exists', () => {
   it('keeps the build ID on the pending response, as the spec defines it', async () => {
     h.getBundle.mockResolvedValue(undefined);
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
-    expect(await getTicketContext('ITS-1', 'caller')).toHaveProperty('buildId', 'b-new');
+    expect(await getTicketContext('ITS-1')).toHaveProperty('buildId', 'b-new');
   });
 
   it('annotates the verified summary for agents and renames rejected to unsupportedClaims', async () => {
@@ -164,12 +165,12 @@ describe('bundle exists', () => {
 
   it('never returns the stored object itself', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1', 'ITO-1', 'ITS-2'));
-    expect(await getTicketContext('ITS-1', 'caller')).not.toBe(bundle);
+    expect(await getTicketContext('ITS-1')).not.toBe(bundle);
   });
 
   it('source check fails: drops every source and marks the response partial', async () => {
     h.visibleIssueKeys.mockImplementationOnce(sees('ITS-1')).mockRejectedValueOnce(new Error('jira-visibility-503'));
-    const r = (await getTicketContext('ITS-1', 'caller')) as ContextBundle;
+    const r = (await getTicketContext('ITS-1')) as ContextBundle;
     expect(r.incidents).toEqual([]);
     expect(r.resolutions).toEqual([]);
     expect(r.partial).toBe(true);
@@ -178,7 +179,7 @@ describe('bundle exists', () => {
 
   it('does not queue a build when a bundle exists', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
-    await getTicketContext('ITS-1', 'caller');
+    await getTicketContext('ITS-1');
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
   });
 });
@@ -274,20 +275,20 @@ describe('site not set up (spec Phase 5.5)', () => {
 
   it('get-ticket-context: the same message as the panel, after the ticket gate, and no build is queued', async () => {
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
-    expect(await getTicketContext('ITS-1', 'caller')).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
+    expect(await getTicketContext('ITS-1')).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
     expect(h.getBundle).not.toHaveBeenCalled();
     expect(h.enqueueTicketBuild).not.toHaveBeenCalled();
   });
 
   it('get-ticket-context: a caller who cannot see the ticket still gets not-accessible, not not-set-up', async () => {
     h.visibleIssueKeys.mockImplementation(sees());
-    expect(await getTicketContext('ITS-1', 'caller')).toMatchObject({ status: 'not-accessible' });
+    expect(await getTicketContext('ITS-1')).toMatchObject({ status: 'not-accessible' });
   });
 
   it('get-ticket-context: a ticket outside the bundle projects is not set up even with settings', async () => {
     h.getSettings.mockResolvedValue({ bundleProjects: ['SUP'], sourceProjects: ['SUP'] });
     h.visibleIssueKeys.mockImplementation(sees('ITS-1'));
-    expect(await getTicketContext('ITS-1', 'caller')).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
+    expect(await getTicketContext('ITS-1')).toEqual({ status: 'not-set-up', message: NOT_SET_UP_MESSAGE });
   });
 
   it('find tools: not set up for text queries, and for named tickets after the gate, with no search', async () => {

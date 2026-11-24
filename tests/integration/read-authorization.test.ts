@@ -67,7 +67,7 @@ const storedBundle: ContextBundle = {
 };
 const storeBundle = () => {
   h.store.set('bundle:ITS-6265', storedBundle);
-  h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { accountId: 'userA', source: 'jira-event' } });
+  h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { source: 'jira-event' } });
 };
 const as = async (viewer: string): Promise<PanelState> => {
   h.viewer = viewer;

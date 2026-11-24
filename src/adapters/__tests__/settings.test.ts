@@ -176,12 +176,19 @@ describe('Confluence spaces (step 10)', () => {
     expect(h.calls.some((c) => c.startsWith('/wiki/'))).toBe(false);
   });
 
-  it('lists global spaces across pages, skipping personal spaces', async () => {
+  it('lists current spaces of every type across pages, skipping personal spaces', async () => {
+    // Types as returned on the two sites: ITO is global (demo site); SD and IKB are onboarding and collaboration
+    // (a newer site with no global space, where a type=global filter listed nothing).
     h.handler = (path) => {
-      if (!path.includes('cursor=')) return { status: 200, json: { results: [{ key: 'ITO', name: 'IT Operations' }, { key: '~600a7', name: 'Me' }], _links: { next: '/wiki/api/v2/spaces?type=global&limit=50&cursor=abc' } } };
-      return { status: 200, json: { results: [{ key: 'KB' }], _links: {} } };
+      if (!path.includes('cursor=')) return { status: 200, json: { results: [{ key: 'ITO', name: 'IT Operations', type: 'global' }, { key: '~600a7', name: 'Me', type: 'personal' }, { key: 'SD', name: 'Software Development', type: 'onboarding' }], _links: { next: '/wiki/api/v2/spaces?status=current&limit=50&cursor=abc' } } };
+      return { status: 200, json: { results: [{ key: 'IKB', name: 'IT Knowledge Base', type: 'collaboration' }, { key: 'PS', type: 'personal' }, { key: 'KB' }], _links: {} } };
     };
-    expect(await listSpaces()).toEqual({ spaces: [{ key: 'ITO', name: 'IT Operations' }, { key: 'KB', name: 'KB' }], truncated: false });
+    expect(await listSpaces()).toEqual({
+      spaces: [{ key: 'ITO', name: 'IT Operations' }, { key: 'SD', name: 'Software Development' }, { key: 'IKB', name: 'IT Knowledge Base' }, { key: 'KB', name: 'KB' }],
+      truncated: false,
+    });
+    expect(h.calls[0]).toContain('status=current');
+    expect(h.calls[0]).not.toContain('type=');
     expect(h.calls[1]).toContain('cursor=abc');
   });
 

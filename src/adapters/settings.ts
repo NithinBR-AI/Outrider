@@ -44,19 +44,21 @@ export async function listProjects(): Promise<{ projects: ProjectOption[]; trunc
 export type SpaceOption = { key: string; name: string };
 
 /**
- * Global Confluence spaces Outrider can see, for the settings page. The app sees only spaces it is a member
- * of (verified on the demo site), so a missing space means Outrider has not been added to it.
+ * Current Confluence spaces Outrider can see, except personal ones, for the settings page. The app sees only
+ * spaces it is a member of (verified on the demo site), so a missing space means Outrider has not been added to it.
+ * Not filtered to type=global: newer sites create "collaboration", "knowledge_base" and "onboarding" spaces, and a
+ * second site (2026-11-24) had no global space at all, so the list was empty.
  */
 export async function listSpaces(): Promise<{ spaces: SpaceOption[]; truncated: boolean }> {
   const spaces: SpaceOption[] = [];
   let cursor: string | undefined;
   for (let page = 0; page * 50 < MAX_LISTED_PROJECTS; page++) {
     const res = cursor
-      ? await api.asApp().requestConfluence(route`/wiki/api/v2/spaces?type=global&limit=50&cursor=${cursor}`, { headers: { Accept: 'application/json' } })
-      : await api.asApp().requestConfluence(route`/wiki/api/v2/spaces?type=global&limit=50`, { headers: { Accept: 'application/json' } });
+      ? await api.asApp().requestConfluence(route`/wiki/api/v2/spaces?status=current&limit=50&cursor=${cursor}`, { headers: { Accept: 'application/json' } })
+      : await api.asApp().requestConfluence(route`/wiki/api/v2/spaces?status=current&limit=50`, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(`confluence-spaces-${res.status}`);
-    const data = (await res.json()) as { results?: { key?: string; name?: string }[]; _links?: { next?: string } };
-    for (const s of data.results ?? []) if (s.key && SPACE_KEY.test(s.key)) spaces.push({ key: s.key, name: s.name ?? s.key });
+    const data = (await res.json()) as { results?: { key?: string; name?: string; type?: string }[]; _links?: { next?: string } };
+    for (const s of data.results ?? []) if (s.key && s.type !== 'personal' && SPACE_KEY.test(s.key)) spaces.push({ key: s.key, name: s.name ?? s.key });
     const next = data._links?.next ? new URL(data._links.next, 'https://x').searchParams.get('cursor') ?? undefined : undefined;
     if (!next) return { spaces, truncated: false };
     cursor = next;

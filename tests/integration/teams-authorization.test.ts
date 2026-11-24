@@ -83,7 +83,7 @@ beforeEach(() => {
   h.store.clear();
   h.store.set('settings:site', { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], savedAt: 't' });
   h.store.set('bundle:ITS-6265', storedBundle);
-  h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { accountId: 'userA', source: 'jira-event' } });
+  h.store.set('status:ITS-6265', { ticketKey: 'ITS-6265', buildId: 'b1', requestedAt: 'r', status: 'complete', actor: { source: 'jira-event' } });
   h.canSee = { userA: ['ITS-6265', 'ITO-9647', 'ITS-6258'], userB: ['ITS-6265', 'ITS-6258'], userD: ['ITS-6265', 'ITO-9647', 'ITS-6258'] };
   h.graphSees = { userA: true, userB: true, userD: false };
   h.graphFails = false;

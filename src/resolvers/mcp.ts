@@ -44,13 +44,12 @@ export async function getTicketContext(
   payload: Record<string, unknown>,
   context?: Record<string, unknown>,
 ): Promise<GetTicketContextResult | InvalidRequest> {
-  const callerAccountId = callerOf(context);
-  if (!callerAccountId) return NO_CALLER;
+  if (!callerOf(context)) return NO_CALLER;
   const ticketKey = resolveTicketKey(payload ?? {});
   if (!ticketKey) {
     return { status: 'invalid-request', message: 'Provide a Jira issue key such as ITS-123.' };
   }
-  return getTicketContextTool(ticketKey, callerAccountId);
+  return getTicketContextTool(ticketKey);
 }
 
 /**

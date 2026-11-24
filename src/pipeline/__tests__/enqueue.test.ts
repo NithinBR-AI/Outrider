@@ -47,12 +47,14 @@ describe('onJiraIssueEvent', () => {
     await onJiraIssueEvent({ eventType: 'avi:jira:updated:issue', atlassianId: 'user-1', issue: { key: 'ITS-6265' } });
     const s = statusOf('ITS-6265')!;
     expect(s.status).toBe('queued');
-    expect(s.actor).toEqual({ accountId: 'user-1', source: 'jira-event' });
+    // The event's atlassianId is never stored or queued (user privacy guide: no stored account IDs).
+    expect(s.actor).toEqual({ source: 'jira-event' });
+    expect(JSON.stringify(h.push.mock.calls)).not.toContain('user-1');
     expect(h.push).toHaveBeenCalledTimes(2);
     const body = h.push.mock.calls[0][0].body;
     expect(body).toMatchObject({ kind: 'jira-ticket', ticketKey: 'ITS-6265', buildId: s.buildId, requestedAt: s.requestedAt });
     // Step 13: and one clustering pass for the ticket's project, after a short delay.
-    expect(h.push.mock.calls[1][0]).toMatchObject({ body: { kind: 'cluster-pass', projectKey: 'ITS', actor: { accountId: 'user-1', source: 'jira-event' } }, delayInSeconds: CLUSTER_PASS_DELAY_SECONDS });
+    expect(h.push.mock.calls[1][0]).toMatchObject({ body: { kind: 'cluster-pass', projectKey: 'ITS', actor: { source: 'jira-event' } }, delayInSeconds: CLUSTER_PASS_DELAY_SECONDS });
   });
 
   it('queues no clustering pass when neither a service field nor an entity field is configured', async () => {

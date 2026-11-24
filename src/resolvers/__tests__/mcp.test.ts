@@ -118,7 +118,7 @@ describe('resolveTicketKey', () => {
 describe('getTicketContext handler', () => {
   it('passes the resolved key and the caller from context.principal to the tool', async () => {
     await getTicketContext({ ticketKey: 'its-6265' }, { principal: { accountId: 'acc-1' } });
-    expect(tool).toHaveBeenCalledWith('ITS-6265', 'acc-1');
+    expect(tool).toHaveBeenCalledWith('ITS-6265');
   });
 
   it('returns the tool result unchanged', async () => {
@@ -139,7 +139,7 @@ describe('getTicketContext handler', () => {
   it('ignores an account ID in the inputs', async () => {
     expect(await getTicketContext({ ticketKey: 'ITS-1', accountId: 'forged' }, undefined)).toMatchObject({ status: 'invalid-request' });
     await getTicketContext({ ticketKey: 'ITS-1', accountId: 'forged' }, { principal: { accountId: 'real' } });
-    expect(tool).toHaveBeenCalledWith('ITS-1', 'real');
+    expect(tool).toHaveBeenCalledWith('ITS-1'); // the forged input is ignored, and the caller is not passed on to be stored
   });
 
   it('invalid ticket key: invalid-request, tool never called', async () => {

@@ -90,7 +90,7 @@ export function toMcpBundle(bundle: ViewerBundle): McpContextBundle {
 export const NOT_ACCESSIBLE_MESSAGE = 'The ticket was not found or you do not have access to it.';
 export const PENDING_MESSAGE = 'Context for this ticket is being prepared. Ask again in a minute.';
 
-export async function getTicketContext(ticketKey: string, callerAccountId: string): Promise<GetTicketContextResult> {
+export async function getTicketContext(ticketKey: string): Promise<GetTicketContextResult> {
   const notAccessible: TicketNotAccessible = { status: 'not-accessible', ticketKey, message: NOT_ACCESSIBLE_MESSAGE };
 
   // 1. Authorization gate, before any read of stored state or any side effect.
@@ -113,7 +113,7 @@ export async function getTicketContext(ticketKey: string, callerAccountId: strin
     if (status && (status.status === 'queued' || status.status === 'building')) {
       return { status: 'pending', ticketKey, buildId: status.buildId, requestedAt: status.requestedAt, message: PENDING_MESSAGE };
     }
-    const { buildId, requestedAt } = await enqueueTicketBuild(ticketKey, { accountId: callerAccountId, source: 'unknown' });
+    const { buildId, requestedAt } = await enqueueTicketBuild(ticketKey, { source: 'unknown' });
     return { status: 'pending', ticketKey, buildId, requestedAt, message: PENDING_MESSAGE };
   }
 

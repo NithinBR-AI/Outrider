@@ -88,7 +88,7 @@ export async function onJiraIssueEvent(event: JiraIssueEvent): Promise<void> {
   const settings = await getSettings();
   if (!isBundleTicket(settings, ticketKey)) return;
 
-  const actor: ActorContext = { accountId: event.atlassianId, source: 'jira-event' };
+  const actor: ActorContext = { source: 'jira-event' };
   const { buildId } = await enqueueTicketBuild(ticketKey, actor);
   console.log(`queued build ${buildId} for ${ticketKey} (${event.eventType ?? 'unknown event'})`);
   // Step 13: a request was created or changed, so its project's clusters may have changed too. A failure here
