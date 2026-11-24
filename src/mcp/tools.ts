@@ -14,7 +14,7 @@ import { getTicket, searchIncidents, searchResolutions, visibleIssueKeys } from 
 import { getBundle, getStatus } from '../adapters/storage';
 import { AUTH_JIRA_CHECK_FAILED, bundleSourceKeys } from '../domain/authorize';
 import { MAX_TOOL_RESULTS, textQuery, withHint } from '../domain/query';
-import { isBundleTicket, NOT_SET_UP_MESSAGE, RetrievalSettings, SiteSettings } from '../domain/settings';
+import { clusterConfig, isBundleTicket, NOT_SET_UP_MESSAGE, RetrievalSettings, SiteSettings } from '../domain/settings';
 import { getSettings } from '../adapters/settings';
 import { Incident, PendingContext, Resolution, Ticket, ViewerBundle } from '../domain/types';
 import { viewerBundle } from '../resolvers/viewerContext';
@@ -57,6 +57,12 @@ export const UNSUPPORTED_CLAIM_NOTE =
 // Atlassian Teams setting on the project only.
 export const TEAMS_NOTE =
   'Each team is linked in Atlassian Teams to the Jira project where a related incident is tracked (see evidence). This does not mean the team is assigned to, responsible for, or working on the incident. Describe it as a team linked to that project, not as the responsible, owning or investigating team.';
+// Found on the demo site (production, 2026-11-24): an answer with no note for an empty list let Rovo fill the gap with
+// its own Jira search and present unrelated tickets as an emerging incident. Every empty list an agent might fill in
+// therefore says what it means.
+export const NO_TEAMS_NOTE =
+  'No teams are listed. Teams are only those linked in Atlassian Teams to the project of a related incident you can see, and a lookup can fail (see failures). This does not mean no team is involved; do not name a team from other sources as the involved team.';
+
 /** The verified summary as MCP callers receive it. */
 export type McpSummary = {
   claimsNote: string;
@@ -74,7 +80,7 @@ export type GetTicketContextResult = McpContextBundle | PendingContext | TicketN
 /** Removes internal bookkeeping fields and annotates the verified summary for agents. */
 export function toMcpBundle(bundle: ViewerBundle): McpContextBundle {
   const { buildId: _buildId, ticketFingerprint: _fingerprint, summary, ...base } = bundle;
-  const rest: McpContextBundle = (base.teams ?? []).length > 0 ? { ...base, teamsNote: TEAMS_NOTE } : base;
+  const rest: McpContextBundle = { ...base, teamsNote: (base.teams ?? []).length > 0 ? TEAMS_NOTE : NO_TEAMS_NOTE };
   if (!summary) return rest;
   return {
     ...rest,
@@ -145,8 +151,12 @@ export async function getTicketContext(ticketKey: string): Promise<GetTicketCont
 // results" from "no access" (TicketNotAccessible) and from "could not check" (partial).
 
 export type FindQuery = { ticketKey?: string; text?: string };
-export type FindIncidentsResult = { incidents: Incident[]; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp;
-export type FindResolutionsResult = { resolutions: Resolution[]; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp;
+export type FindIncidentsResult = { incidents: Incident[]; note?: string; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp;
+export type FindResolutionsResult = { resolutions: Resolution[]; note?: string; partial: boolean; failures: string[] } | TicketNotAccessible | NotSetUp;
+
+// Empty find results say where Outrider looked, so an agent does not present other search results as these.
+export const NO_INCIDENTS_NOTE = 'No related incidents were found that you can see, in the projects Outrider searches.';
+export const NO_RESOLUTIONS_NOTE = 'No similar resolved tickets were found that you can see, in the projects Outrider searches.';
 
 // Ticket has its own status field (the Jira status), so "'status' in x" cannot tell a query ticket from these.
 const isRefusal = (x: object): x is TicketNotAccessible | NotSetUp => {
@@ -201,12 +211,14 @@ async function findFor<T extends { source: { id: string } }>(
 
 export async function findRelatedIncidents(query: FindQuery): Promise<FindIncidentsResult> {
   const r = await findFor(query, (t, s) => searchIncidents(t, s), 'jira-incidents');
-  return isRefusal(r) ? r : { incidents: r.items, partial: r.partial, failures: r.failures };
+  if (isRefusal(r)) return r;
+  return { incidents: r.items, ...(r.items.length === 0 ? { note: NO_INCIDENTS_NOTE } : {}), partial: r.partial, failures: r.failures };
 }
 
 export async function findSimilarResolutions(query: FindQuery): Promise<FindResolutionsResult> {
   const r = await findFor(query, (t, s) => searchResolutions(t, s), 'jira-resolutions');
-  return isRefusal(r) ? r : { resolutions: r.items, partial: r.partial, failures: r.failures };
+  if (isRefusal(r)) return r;
+  return { resolutions: r.items, ...(r.items.length === 0 ? { note: NO_RESOLUTIONS_NOTE } : {}), partial: r.partial, failures: r.failures };
 }
 
 // ---- get-emerging-incidents (step 13, spec §14.9, §15) ----
@@ -219,7 +231,16 @@ export async function findSimilarResolutions(query: FindQuery): Promise<FindReso
 export const SIGNALS_NOTE =
   'Each signal means several open requests share the same structured service and/or component within a short window. state "confirmed" only means both the service and the component match on every listed request; "uncertain" means one of them is missing on at least one request. Neither says how likely an incident is. It is advisory: no incident has been declared or created by Outrider. Recommend investigation; do not say an incident exists or is likely, and do not say one has not been declared "yet".';
 
-export type EmergingIncidentsResult = { signals: ClusterSignal[]; signalsNote?: string; partial: boolean; failures: string[] } | NotSetUp;
+/**
+ * The note for an empty answer (see NO_TEAMS_NOTE for why). Uses the site's own window and threshold. When a project
+ * could not be checked, it says so instead of saying there is no signal.
+ */
+export function noSignalsNote(threshold: number, windowMinutes: number, partial: boolean): string {
+  const scope = partial ? 'Some projects could not be checked right now (see failures), so this answer may be incomplete. ' : '';
+  return `${scope}No active signals: Outrider found no group of ${threshold} or more open requests you can see that share the same structured service and/or component within ${windowMinutes} minutes. Outrider has not raised an emerging incident. Do not group tickets into an emerging incident yourself or present tickets found another way as one.`;
+}
+
+export type EmergingIncidentsResult = { signals: ClusterSignal[]; signalsNote: string; partial: boolean; failures: string[] } | NotSetUp;
 
 /** Signals for one project (if given and set up for context) or for every project that gets context. */
 export async function getEmergingIncidents(projectKey?: string): Promise<EmergingIncidentsResult> {
@@ -227,5 +248,7 @@ export async function getEmergingIncidents(projectKey?: string): Promise<Emergin
   if (!settings) return NOT_SET_UP;
   if (projectKey && !settings.bundleProjects.includes(projectKey)) return NOT_SET_UP;
   const { signals, failure } = await signalsForProjects(projectKey ? [projectKey] : settings.bundleProjects);
-  return { signals, ...(signals.length > 0 ? { signalsNote: SIGNALS_NOTE } : {}), partial: !!failure, failures: failure ? [failure] : [] };
+  const { threshold, windowMinutes } = clusterConfig(settings);
+  const signalsNote = signals.length > 0 ? SIGNALS_NOTE : noSignalsNote(threshold, windowMinutes, !!failure);
+  return { signals, signalsNote, partial: !!failure, failures: failure ? [failure] : [] };
 }

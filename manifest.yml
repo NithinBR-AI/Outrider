@@ -8,6 +8,7 @@ modules:
       title: Outrider
       description: Outrider prepares relevant context for this ticket.
       label: Outrider
+      icon: resource:icons;outrider.svg
 
   # Per-site settings (spec Phase 5.5). Only Jira admins can open it. useAsConfig adds a Configure button to
   # Outrider's entry in Jira's Manage apps list; the page is at /jira/settings/apps/configure/<appId>/<envId>.
@@ -18,6 +19,7 @@ modules:
         function: adminResolver
       render: native
       title: Outrider
+      icon: resource:icons;outrider.svg
       useAsConfig: true
 
   rovo:mcp:
@@ -131,6 +133,9 @@ resources:
     path: src/frontend/index.jsx
   - key: admin
     path: src/frontend/admin.jsx
+  # The Outrider mark for the panel button and the settings page title (docs/avatar.html, cropped).
+  - key: icons
+    path: static/icons
 
 app:
   runtime:

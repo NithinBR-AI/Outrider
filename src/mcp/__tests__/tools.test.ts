@@ -22,7 +22,11 @@ vi.mock('../../adapters/settings', () => ({ getSettings: h.getSettings }));
 vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
 vi.mock('../../pipeline/enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
 
-import { CLAIMS_NOTE, findRelatedIncidents, findSimilarResolutions, getTicketContext, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, TEAMS_NOTE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE } from '../tools';
+import {
+  CLAIMS_NOTE, findRelatedIncidents, findSimilarResolutions, getTicketContext, NO_INCIDENTS_NOTE, NO_RESOLUTIONS_NOTE, NO_TEAMS_NOTE,
+  noSignalsNote, NOT_ACCESSIBLE_MESSAGE, PENDING_MESSAGE, TEAMS_NOTE, toMcpBundle, UNSUPPORTED_CLAIM_NOTE,
+} from '../tools';
+import { outcomeOf } from '../../resolvers/mcp';
 import { MAX_TOOL_RESULTS } from '../../domain/query';
 import { NOT_SET_UP_MESSAGE } from '../../domain/settings';
 import { Incident, Resolution, Ticket } from '../../domain/types';
@@ -126,7 +130,7 @@ describe('bundle exists', () => {
     expect(r).not.toHaveProperty('buildId');
     expect(r).not.toHaveProperty('ticketFingerprint');
     expect(r).toMatchObject({ ticketKey: 'ITS-1', builtAt: 't', partial: false, failures: [] });
-    expect(Object.keys(r).sort()).toEqual(['articles', 'builtAt', 'emergingSignals', 'failures', 'incidents', 'partial', 'resolutions', 'services', 'teams', 'ticketKey']);
+    expect(Object.keys(r).sort()).toEqual(['articles', 'builtAt', 'emergingSignals', 'failures', 'incidents', 'partial', 'resolutions', 'services', 'teams', 'teamsNote', 'ticketKey']);
   });
 
   it('keeps the build ID on the pending response, as the spec defines it', async () => {
@@ -148,14 +152,15 @@ describe('bundle exists', () => {
     expect(out).not.toHaveProperty('buildId');
   });
 
-  it('adds the teams note only when teams are returned, so an agent cannot read a project link as an assignment', () => {
+  it('notes what listed teams mean, and what an empty list means, so an agent cannot read either wrongly', () => {
     const { summary: _none, ...viewer } = bundle;
     const team = { teamId: 't', name: 'Platform Support', url: '', projectKey: 'ITO', incidentKey: 'ITO-1', evidence: 'Linked to the ITO project, where ITO-1 is tracked' };
     expect(toMcpBundle({ ...viewer, teams: [team] })).toMatchObject({ teams: [team], teamsNote: TEAMS_NOTE });
     expect(TEAMS_NOTE).toContain('does not mean the team is assigned to, responsible for, or working on the incident');
     expect(TEAMS_NOTE).toContain('not as the responsible, owning or investigating team');
-    expect(toMcpBundle({ ...viewer, teams: [] })).not.toHaveProperty('teamsNote');
-    expect(toMcpBundle(viewer)).not.toHaveProperty('teamsNote');
+    expect(toMcpBundle({ ...viewer, teams: [] })).toMatchObject({ teamsNote: NO_TEAMS_NOTE });
+    expect(toMcpBundle(viewer)).toMatchObject({ teamsNote: NO_TEAMS_NOTE });
+    expect(NO_TEAMS_NOTE).toContain('does not mean no team is involved');
   });
 
   it('leaves the summary out when the viewer has none', () => {
@@ -250,21 +255,21 @@ describe('find tools', () => {
   it('empty results are valid, with no visibility call needed', async () => {
     h.searchResolutions.mockResolvedValue([]);
     h.visibleIssueKeys.mockImplementation(sees());
-    expect(await findSimilarResolutions({ text: 'printer jam' })).toEqual({ resolutions: [], partial: false, failures: [] });
+    expect(await findSimilarResolutions({ text: 'printer jam' })).toEqual({ resolutions: [], note: NO_RESOLUTIONS_NOTE, partial: false, failures: [] });
     expect(h.visibleIssueKeys).not.toHaveBeenCalled();
   });
 
   it('a failed result check returns nothing, marked partial, never unfiltered results', async () => {
     h.visibleIssueKeys.mockRejectedValue(new Error('jira-visibility-503'));
-    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], partial: true, failures: [AUTH_JIRA_CHECK_FAILED] });
-    expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], partial: true, failures: [AUTH_JIRA_CHECK_FAILED] });
+    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], note: NO_INCIDENTS_NOTE, partial: true, failures: [AUTH_JIRA_CHECK_FAILED] });
+    expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], note: NO_RESOLUTIONS_NOTE, partial: true, failures: [AUTH_JIRA_CHECK_FAILED] });
   });
 
   it('a failed search returns nothing, marked partial with the source that failed', async () => {
     h.searchIncidents.mockRejectedValue(new Error('jira-search-500'));
     h.searchResolutions.mockRejectedValue(new Error('jira-search-500'));
-    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], partial: true, failures: ['jira-incidents'] });
-    expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], partial: true, failures: ['jira-resolutions'] });
+    expect(await findRelatedIncidents({ text: 'VPN' })).toEqual({ incidents: [], note: NO_INCIDENTS_NOTE, partial: true, failures: ['jira-incidents'] });
+    expect(await findSimilarResolutions({ text: 'VPN' })).toEqual({ resolutions: [], note: NO_RESOLUTIONS_NOTE, partial: true, failures: ['jira-resolutions'] });
   });
 });
 
@@ -308,5 +313,24 @@ describe('site not set up (spec Phase 5.5)', () => {
     h.getTicket.mockResolvedValue({ key: 'INC-3', projectKey: 'INC', summary: 's', description: '', labels: [], serviceIds: [], status: 'Open', updatedAt: 'u' });
     h.searchIncidents.mockResolvedValue([{ source: ref('ITS-5'), status: 'active', summary: 'x', relevance: 0.5 }]);
     expect(await findRelatedIncidents({ ticketKey: 'INC-3' })).toMatchObject({ incidents: [expect.objectContaining({ summary: 'x' })] });
+  });
+});
+
+describe('notes for empty answers and the MCP log line', () => {
+  it('the no-signals note uses the site settings and forbids building an incident from other tickets', () => {
+    const note = noSignalsNote(7, 30, false);
+    expect(note).toContain('no group of 7 or more open requests');
+    expect(note).toContain('within 30 minutes');
+    expect(note).toContain('Do not group tickets into an emerging incident yourself');
+    expect(note).not.toContain('could not be checked');
+    expect(noSignalsNote(7, 30, true)).toMatch(/^Some projects could not be checked right now/);
+  });
+
+  it('logs counts and status only, never ticket text', () => {
+    expect(outcomeOf({ status: 'not-accessible', ticketKey: 'ITS-1', message: 'x' })).toBe('status=not-accessible');
+    expect(outcomeOf({ signals: [], signalsNote: 'n', partial: true, failures: ['f'] })).toBe('signals=0 partial');
+    expect(outcomeOf({ incidents: [1, 2], resolutions: [1], articles: [], teams: [1], summary: { claims: [1, 2, 3], unsupportedClaims: [1] }, partial: false }))
+      .toBe('incidents=2 resolutions=1 articles=0 teams=1 claims=3 unsupported=1');
+    expect(outcomeOf(undefined)).toBe('empty');
   });
 });

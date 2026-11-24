@@ -51,6 +51,10 @@ Rovo agents get the same context through the **Outrider MCP** server:
 | `find-similar-resolutions` | `ticketKey` and/or `description` | Resolved tickets with how they were fixed, searched live |
 | `get-emerging-incidents` | optional `projectKey` | Active emerging-incident signals, with their state and requests |
 
+Each answer carries a short note saying what its lists mean, including an empty list ("no signals" says which
+threshold and window were checked). [`skills/outrider/SKILL.md`](skills/outrider/SKILL.md) tells any agent how to use
+the four tools and read their answers.
+
 ---
 
 ## Outrider and Rovo

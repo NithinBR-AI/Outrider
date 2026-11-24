@@ -34,6 +34,33 @@ export function resolveTicketKey(payload: Record<string, unknown>): string | und
 
 const NO_CALLER: InvalidRequest = { status: 'invalid-request', message: 'This tool needs a signed-in user.' };
 
+// One log line per MCP call: tool, outcome and time. Added after Rovo showed "Something went wrong" with nothing in
+// the logs, because a successful call left no trace. Counts and status only: no ticket text, no account ID.
+const LISTS = ['signals', 'incidents', 'resolutions', 'articles', 'teams'] as const;
+
+/** A short outcome for the log: the refusal status, or the list sizes and the partial flag. */
+export function outcomeOf(result: unknown): string {
+  const r = (result ?? {}) as Record<string, unknown>;
+  if (typeof r.status === 'string') return `status=${r.status}`;
+  const parts = LISTS.filter((k) => Array.isArray(r[k])).map((k) => `${k}=${(r[k] as unknown[]).length}`);
+  const summary = r.summary as { claims?: unknown[]; unsupportedClaims?: unknown[] } | undefined;
+  if (summary) parts.push(`claims=${summary.claims?.length ?? 0}`, `unsupported=${summary.unsupportedClaims?.length ?? 0}`);
+  if (r.partial === true) parts.push('partial');
+  return parts.join(' ') || 'empty';
+}
+
+async function logged<T>(tool: string, run: () => Promise<T>): Promise<T> {
+  const started = Date.now();
+  try {
+    const result = await run();
+    console.info(`MCP ${tool}: ${outcomeOf(result)} in ${Date.now() - started} ms`);
+    return result;
+  } catch (err) {
+    console.error(`MCP ${tool} failed after ${Date.now() - started} ms`, err);
+    throw err;
+  }
+}
+
 /** The authenticated caller, or undefined. Never falls back to the app's identity (§16.2). */
 function callerOf(context?: Record<string, unknown>): string | undefined {
   const id = (context as { principal?: { accountId?: unknown } } | undefined)?.principal?.accountId;
@@ -44,6 +71,10 @@ export async function getTicketContext(
   payload: Record<string, unknown>,
   context?: Record<string, unknown>,
 ): Promise<GetTicketContextResult | InvalidRequest> {
+  return logged('get-ticket-context', () => ticketContext(payload, context));
+}
+
+async function ticketContext(payload: Record<string, unknown>, context?: Record<string, unknown>): Promise<GetTicketContextResult | InvalidRequest> {
   if (!callerOf(context)) return NO_CALLER;
   const ticketKey = resolveTicketKey(payload ?? {});
   if (!ticketKey) {
@@ -73,15 +104,19 @@ export function resolveFindQuery(payload: Record<string, unknown>, textField: 'k
 }
 
 export async function findRelatedIncidents(payload: Record<string, unknown>, context?: Record<string, unknown>): Promise<FindIncidentsResult | InvalidRequest> {
-  if (!callerOf(context)) return NO_CALLER;
-  const query = resolveFindQuery(payload ?? {}, 'keywords');
-  return 'status' in query ? query : findRelatedIncidentsTool(query);
+  return logged('find-related-incidents', async () => {
+    if (!callerOf(context)) return NO_CALLER;
+    const query = resolveFindQuery(payload ?? {}, 'keywords');
+    return 'status' in query ? query : findRelatedIncidentsTool(query);
+  });
 }
 
 export async function findSimilarResolutions(payload: Record<string, unknown>, context?: Record<string, unknown>): Promise<FindResolutionsResult | InvalidRequest> {
-  if (!callerOf(context)) return NO_CALLER;
-  const query = resolveFindQuery(payload ?? {}, 'description');
-  return 'status' in query ? query : findSimilarResolutionsTool(query);
+  return logged('find-similar-resolutions', async () => {
+    if (!callerOf(context)) return NO_CALLER;
+    const query = resolveFindQuery(payload ?? {}, 'description');
+    return 'status' in query ? query : findSimilarResolutionsTool(query);
+  });
 }
 
 // Project key shape; anything else is rejected before it is used.
@@ -92,8 +127,10 @@ const PROJECT_KEY_INPUT = /^[A-Z][A-Z0-9_]+$/;
  * The caller comes from the invocation context; results are filtered for that caller (resolvers/signals.ts).
  */
 export async function getEmergingIncidents(payload: Record<string, unknown>, context?: Record<string, unknown>): Promise<EmergingIncidentsResult | InvalidRequest> {
-  if (!callerOf(context)) return NO_CALLER;
-  const raw = typeof payload?.projectKey === 'string' ? payload.projectKey.trim().toUpperCase() : '';
-  if (raw && !PROJECT_KEY_INPUT.test(raw)) return { status: 'invalid-request', message: 'projectKey must be a Jira project key such as ITS.' };
-  return getEmergingIncidentsTool(raw || undefined);
+  return logged('get-emerging-incidents', async () => {
+    if (!callerOf(context)) return NO_CALLER;
+    const raw = typeof payload?.projectKey === 'string' ? payload.projectKey.trim().toUpperCase() : '';
+    if (raw && !PROJECT_KEY_INPUT.test(raw)) return { status: 'invalid-request', message: 'projectKey must be a Jira project key such as ITS.' };
+    return getEmergingIncidentsTool(raw || undefined);
+  });
 }

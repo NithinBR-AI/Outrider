@@ -68,7 +68,7 @@ import { runClusterPass } from '../../src/pipeline/clusterPass';
 import { getPanelContext, PanelState } from '../../src/resolvers/panel';
 import { getEmergingIncidents } from '../../src/resolvers/mcp';
 import { CLUSTER_CHECK_FAILED, dismissSignal } from '../../src/resolvers/signals';
-import { SIGNALS_NOTE } from '../../src/mcp/tools';
+import { noSignalsNote, SIGNALS_NOTE } from '../../src/mcp/tools';
 
 const NOW = new Date('2026-11-23T10:30:00.000Z');
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -200,13 +200,14 @@ describe('get-emerging-incidents applies the same rules as the panel (authorizat
     expect(a.partial).toBe(false);
     const b = (await getEmergingIncidents({ projectKey: 'its' }, caller('userB'))) as { signals: unknown[]; signalsNote?: string };
     expect(b.signals).toEqual([]);
-    expect(b).not.toHaveProperty('signalsNote');
+    // An empty answer says what it means, so an agent does not build its own incident from other tickets.
+    expect(b.signalsNote).toBe(noSignalsNote(5, 90, false));
   });
 
   it('reports a failed check as partial with no signals', async () => {
     await runClusterPass(job, NOW);
     h.checkFails = true;
-    expect(await getEmergingIncidents({}, caller('userA'))).toEqual({ signals: [], partial: true, failures: [CLUSTER_CHECK_FAILED] });
+    expect(await getEmergingIncidents({}, caller('userA'))).toEqual({ signals: [], signalsNote: noSignalsNote(5, 90, true), partial: true, failures: [CLUSTER_CHECK_FAILED] });
   });
 
   it('needs a caller, a valid project key, and a project that gets context', async () => {
