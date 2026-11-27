@@ -21,17 +21,20 @@ function formatDate(iso) {
 const Freshness = ({ label, iso }) => <Text size="small" color="color.text.subtlest">{label} {formatDate(iso)}</Text>;
 
 // Relevance indicator (spec §17.2): a simple visual weight, never the numeric score.
-// relevance is the 0..1 match strength stored on each item.
+// relevance is the share of the ticket's distinctive words the item contains (0..1), so the label says
+// "word match". The order of items comes from the ranking, which also uses embeddings when they are available;
+// a label naming the ranking score would need thresholds that hold on every site, and embedding scores do not
+// (found in review: on the demo site right and unrelated pages were 0.03 apart).
 const STRONG_MATCH = 0.5;
 const GOOD_MATCH = 0.3;
 function matchLabel(relevance) {
   if (typeof relevance !== 'number') return null;
-  if (relevance >= STRONG_MATCH) return 'Strong match';
-  if (relevance >= GOOD_MATCH) return 'Good match';
-  return 'Partial match';
+  if (relevance >= STRONG_MATCH) return 'Strong word match';
+  if (relevance >= GOOD_MATCH) return 'Good word match';
+  return 'Partial word match';
 }
 
-// One line under each item: relevance and freshness, e.g. "Strong match · Started 20/11/2026, 6:23 pm".
+// One line under each item: relevance and freshness, e.g. "Strong word match · Started 20/11/2026, 6:23 pm".
 const ItemMeta = ({ relevance, label, iso }) => {
   const match = matchLabel(relevance);
   return <Text size="small" color="color.text.subtlest">{match ? `${match} · ` : ''}{label} {formatDate(iso)}</Text>;
@@ -283,6 +286,8 @@ const STATE_MESSAGE = {
   building: 'Context is being assembled.',
   superseded: 'A newer version is being prepared.',
   failed: 'Context could not be assembled.',
+  // Client-side only: the request to Outrider itself failed (found in review: the spinner used to stay forever).
+  'load-failed': "Outrider couldn't load right now.",
 };
 
 // Outrider's own app ID (manifest.yml app.id), not a site setting. With the environment ID from the product
@@ -311,9 +316,13 @@ const App = () => {
     let cancelled = false;
     let timer;
     const load = () => invoke('getContext').then((r) => { if (!cancelled) setResult(r); return r; });
-    load().then((r) => {
+    load().catch((err) => {
+      console.error('Outrider: loading context failed', err);
+      if (!cancelled) setResult({ state: 'load-failed' });
+      return null;
+    }).then((r) => {
       if (r && r.state !== 'complete' && r.state !== 'failed' && r.state !== 'unavailable' && r.state !== 'not-set-up') {
-        timer = setTimeout(load, POLL_ONCE_AFTER_MS);
+        timer = setTimeout(() => load().catch((err) => console.error('Outrider: reloading context failed', err)), POLL_ONCE_AFTER_MS);
       }
     });
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
@@ -321,13 +330,26 @@ const App = () => {
 
   const refresh = () => {
     setRefreshing(true);
-    invoke('getContext').then(setResult).finally(() => setRefreshing(false));
+    invoke('getContext')
+      .then(setResult)
+      .catch((err) => console.error('Outrider: refreshing context failed', err)) // keep what is shown
+      .finally(() => setRefreshing(false));
   };
 
   if (!result) return <Spinner label="Loading Outrider context" />;
 
   const message = STATE_MESSAGE[result.state];
   if (result.state === 'not-set-up') return <NotSetUp message={message} />;
+  if (result.state === 'load-failed') {
+    return (
+      <SectionMessage appearance="warning">
+        <Text>{message}</Text>
+        <Button appearance="subtle" spacing="compact" iconBefore="refresh" onClick={refresh} isDisabled={refreshing}>
+          {refreshing ? 'Trying again…' : 'Try again'}
+        </Button>
+      </SectionMessage>
+    );
+  }
   if (result.state === 'unavailable') {
     // Nothing else is rendered: no freshness, no build state, no hint that context exists.
     return <SectionMessage appearance="information"><Text>{message}</Text></SectionMessage>;

@@ -86,7 +86,7 @@ through Outrider's MCP tools.
 | `jira:adminPage` | Per-site settings: projects, Confluence spaces, detected fields, clustering |
 | `trigger` (`avi:jira:created:issue`, `avi:jira:updated:issue`) | Starts a context build and a clustering pass when a ticket changes |
 | Forge queue (`consumer`) | Runs builds and clustering passes outside the event, one per ticket or project at a time |
-| `scheduledTrigger` (hourly) | Sweeps clustering so signals end on time when nothing changes |
+| `scheduledTrigger` (hourly, two) | Sweeps clustering so signals end on time when nothing changes; reconciliation repairs stuck or failed builds and stale context |
 | `rovo:mcp` + four `action` modules | The Outrider MCP server for Rovo agents |
 | Teamwork Graph (`requestTeamworkGraph`, as the user) | The Teams involved section |
 | Forge KVS (`storage:app`) | Context bundles, build status and locks, signal records, site settings |
@@ -120,7 +120,8 @@ Atlassian Teams, **Platform Support** is linked to the `ITO` project.
    - the active login incident ITO-9647 and the past SSL fix ITO-9642;
    - the Auth Service Troubleshooting Runbook;
    - **Platform Support** under Teams involved, "Linked to the ITO project, where ITO-9647 is tracked".
-3. Each item has a source link, freshness and a match label (Strong, Good or Partial). Each section has its own
+3. Each item has a source link, freshness and a word-match label (Strong, Good or Partial word match: how many of the
+   ticket's distinctive words the item contains; the order also uses embeddings). Each section has its own
    **Show less** / **Show more**.
 
 Context is built when a ticket changes, not when the panel opens. A ticket that has not changed since Outrider was
@@ -171,6 +172,10 @@ Read, as the viewer, on every panel open and Rovo call
 6. Authorize  one Jira search and one Confluence fetch as the viewer; anything not returned is left out
 7. Verify     each claim against its source's current text; no verbatim span, no claim
 8. Deliver    panel or MCP response, plus teams (Teamwork Graph, live) and emerging-incident signals
+
+Repair, as the app, hourly
+9. Reconcile  re-queue builds stuck over 15 minutes or failed (at most 3 tries); rebuild a bundle whose ticket
+              changed without an event reaching Outrider; remove records of tickets Jira says are deleted
 ```
 
 **The model proposes. The verifier decides. The viewer's own permissions decide what is visible.**
@@ -365,6 +370,12 @@ the way it does.
 - **Clustering** supports Components as the component field, not Assets.
 - **Free-text search** in the find tools is keyword-based: a one-word query such as "VPN" scores every hit as a full
   match, and a generic term can pull in a weak match.
+- **Clustering reads at most 200 open requests per project per pass**, newest first. A project with more requests
+  than that inside one window is clustered on the newest 200.
+- **Reconciliation** checks up to 1,000 build statuses and 200 bundles per hourly run and continues from there in the
+  next run, so on a large site a stale bundle can take a few hours to be found. A ticket edit always rebuilds at once.
+- **Match labels** (Strong, Good, Partial word match) show how many of the ticket's distinctive words an item
+  contains. The order also uses embeddings, so an item can rank above one with a stronger word match.
 - **Not built:** a Confluence index for very large spaces; Teamwork Graph is not used for ranking.
 
 ---
@@ -596,7 +607,7 @@ forge install --upgrade -p Confluence -s <your-site>.atlassian.net -e developmen
 
 ### Testing
 
-- **712 tests** with Vitest. Domain logic (`src/domain`) is held at **100% branch coverage**; `npm run coverage`
+- **745 tests** with Vitest. Domain logic (`src/domain`) is held at **100% branch coverage**; `npm run coverage`
   fails below it. CI never calls Atlassian, Bedrock or Jina.
 - **Recorded fixtures** from the demo site in `tests/fixtures/`: Jira tickets, 13 Confluence pages, Teamwork Graph
   responses, real Jina vectors and a real Qwen3-235B response.
@@ -625,7 +636,7 @@ Outrider/
 │   ├── index.ts            Function handlers
 │   ├── domain/             Pure logic: ranking, verifier, authorization, clustering, settings
 │   ├── adapters/           Jira, Confluence, Teamwork Graph, Jina, Bedrock (Mantle), KVS
-│   ├── pipeline/           Event handler, queue routing, ticket build, clustering pass
+│   ├── pipeline/           Event handler, queue routing, ticket build, clustering pass, reconciliation
 │   ├── resolvers/          Panel, settings and MCP handlers; shared per-viewer read path
 │   ├── mcp/                The four MCP tools
 │   └── frontend/           UI Kit panel and settings page

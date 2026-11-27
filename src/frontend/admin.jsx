@@ -129,9 +129,10 @@ const App = () => {
           <Select inputId="confluenceSpaces" isMulti options={spaceOptions} value={spaceOptions.filter((o) => form.confluenceSpaces.includes(o.value))}
             onChange={(v) => setForm({ ...form, confluenceSpaces: (v ?? []).map((o) => o.value) })} />
           <HelperMessage>
-            Optional. Only spaces Outrider is a member of are listed. If a space is missing, add Outrider as a member in that space's
-            settings (Space settings, Members). New access can take 10 to 15 minutes to reach search; until then Outrider lists the
-            space's recent pages instead.
+            Optional. Spaces that all Confluence users can view are listed. A restricted space is listed once Outrider is added to it:
+            in Confluence, open the space's settings, choose Users, then Add people and agents, and add both Outrider entries with a
+            role that can view pages. New access can take 10 to 15 minutes to reach search; until then Outrider lists the space's
+            recent pages instead.
           </HelperMessage>
         </Box>
       </Stack>

@@ -227,12 +227,42 @@ export async function liveSourceTexts(keys: string[]): Promise<Map<string, { ref
 
 // ---- Public API ----
 
+/** The fields a Ticket is built from. getTicket and currentTickets use the same list, so their fingerprints agree. */
+function ticketFields(settings: RetrievalSettings): string[] {
+  return ['summary', 'description', 'reporter', 'project', 'priority', 'labels', 'status', 'updated', settings.requestTypeField, settings.affectedServicesField].filter(
+    (f): f is string => !!f,
+  );
+}
+
 /** Fetches the current state of a ticket (spec §8.1). */
 export async function getTicket(ticketKey: string, settings: RetrievalSettings): Promise<Ticket> {
-  const fields = ['summary', 'description', 'reporter', 'project', 'priority', 'labels', 'status', 'updated', settings.requestTypeField, settings.affectedServicesField]
-    .filter((f): f is string => !!f)
-    .join(',');
-  const issue = await jiraGet<JiraIssue>(route`/rest/api/3/issue/${ticketKey}?fields=${fields}`);
+  const issue = await jiraGet<JiraIssue>(route`/rest/api/3/issue/${ticketKey}?fields=${ticketFields(settings).join(',')}`);
+  return toTicket(issue, settings);
+}
+
+/**
+ * Current state of many tickets, AS THE APP, for reconciliation: one JQL search per batch, normalized exactly like
+ * getTicket. Deleted tickets and keys in unknown projects are left out (verified on the demo site for key-in searches).
+ */
+export async function currentTickets(keys: string[], settings: RetrievalSettings): Promise<Map<string, Ticket>> {
+  const valid = [...new Set(keys)].filter((k) => ISSUE_KEY.test(k));
+  const out = new Map<string, Ticket>();
+  for (let i = 0; i < valid.length; i += VISIBILITY_BATCH) {
+    const batch = valid.slice(i, i + VISIBILITY_BATCH);
+    for (const issue of await searchJql(`key in (${batch.join(', ')})`, ticketFields(settings), batch.length)) out.set(issue.key, toTicket(issue, settings));
+  }
+  return out;
+}
+
+/** False only when Jira says the ticket does not exist (404), as the app. Any other failure throws. */
+export async function ticketExists(ticketKey: string): Promise<boolean> {
+  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${ticketKey}?fields=key`, { headers: { Accept: 'application/json' } });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(`jira-get-${res.status}`);
+  return true;
+}
+
+function toTicket(issue: JiraIssue, settings: RetrievalSettings): Ticket {
   const requestType = (settings.requestTypeField ? issue.fields[settings.requestTypeField] : undefined) as { requestType?: { id?: string } } | null | undefined;
   return {
     key: issue.key,

@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
 // Teamwork Graph (step 11): no linked teams unless a test says otherwise; tests/integration/teams-authorization.test.ts covers teams.
 vi.mock('../../src/adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => ({ teams: new Map(keys.map((key) => [key, []])), failed: [] }) }));
 vi.mock('@forge/kvs', () => ({
+  WhereConditions: { beginsWith: (value: string) => ({ condition: 'BEGINS_WITH', value }) },
   kvs: {
     get: async (key: string) => {
       h.reads.push(key);
@@ -30,7 +31,17 @@ vi.mock('@forge/kvs', () => ({
     },
     set: async (key: string, value: unknown) => void h.store.set(key, structuredClone(value)),
     delete: async (key: string) => void h.store.delete(key),
-  },
+    // Begins-with queries over the store (signal records): none exist in these tests, so reads find nothing.
+    query: () => {
+      let prefix = '';
+      const builder = {
+        where: (_p: string, c: { value: string }) => ((prefix = c.value), builder),
+        limit: () => builder,
+        cursor: () => builder,
+        getMany: async () => ({ results: [...h.store.entries()].filter(([k]) => k.startsWith(prefix)).map(([key, value]) => ({ key, value: structuredClone(value) })) }),
+      };
+      return builder;
+    },  },
 }));
 vi.mock('@forge/events', () => ({
   Queue: class {

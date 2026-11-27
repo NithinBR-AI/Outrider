@@ -44,8 +44,9 @@ export async function listProjects(): Promise<{ projects: ProjectOption[]; trunc
 export type SpaceOption = { key: string; name: string };
 
 /**
- * Current Confluence spaces Outrider can see, except personal ones, for the settings page. The app sees only
- * spaces it is a member of (verified on the demo site), so a missing space means Outrider has not been added to it.
+ * Current Confluence spaces Outrider can see, except personal ones, for the settings page. The app sees spaces that
+ * all Confluence users can view (verified on a second site) and restricted spaces it has been added to (verified on
+ * the demo site), so a missing space is restricted and Outrider has not been added to it.
  * Not filtered to type=global: newer sites create "collaboration", "knowledge_base" and "onboarding" spaces, and a
  * second site (2026-11-24) had no global space at all, so the list was empty.
  */
@@ -108,7 +109,7 @@ export async function saveSettings(input: SettingsInput, now: Date = new Date())
     if (spaces.length > 0) {
       const visible = await visibleSpaceKeys(spaces);
       const missing = spaces.find((k) => !visible.has(k));
-      if (missing) return { ok: false, message: `Confluence space ${missing} doesn't exist or Outrider can't see it. Add Outrider as a member of that space, then try again.` };
+      if (missing) return { ok: false, message: `Confluence space ${missing} doesn't exist or Outrider can't see it. Open the space's settings in Confluence, choose Users, then Add people and agents, and add both Outrider entries with a role that can view pages. Then try again.` };
     }
     const wanted = [settings.affectedServicesField, settings.requestTypeField, settings.clusterEntityField].filter((f): f is string => !!f);
     if (wanted.length > 0) {

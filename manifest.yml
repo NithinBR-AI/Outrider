@@ -99,6 +99,10 @@ modules:
     - key: cluster-sweep
       function: clusterSweep
       interval: hour
+    # Hourly reconciliation (spec §8.7): queues one run that repairs stuck and failed builds and rebuilds stale bundles.
+    - key: reconcile-sweep
+      function: reconcileSweep
+      interval: hour
   consumer:
     - key: outrider-build-consumer
       queue: outrider-build-queue
@@ -123,6 +127,8 @@ modules:
       handler: index.getEmergingIncidents
     - key: clusterSweep
       handler: index.onClusterSweep
+    - key: reconcileSweep
+      handler: index.onReconcileSweep
 
     - key: buildJob
       handler: index.buildJob

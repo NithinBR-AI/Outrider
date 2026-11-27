@@ -12,8 +12,9 @@ export type SourceRef = {
 };
 
 // relevance (0..1): how closely the item matches the ticket, for the panel's relevance indicator
-// (§17.2) and MCP "relevance information" (§15.2). Today this is the keyword match strength; it becomes
-// the semantic similarity once embeddings exist. Ordering uses the full §9 score, not this value alone.
+// (§17.2) and MCP "relevance information" (§15.2). It is the keyword match strength: the share of the ticket's
+// distinctive words the item contains, comparable across sites. It stays that after embeddings (step 12): embedding
+// scores have no site-independent scale (found in review). Ordering uses the full §9 score, not this value alone.
 
 export type Incident = {
   source: SourceRef;
@@ -36,7 +37,7 @@ export type Article = {
   source: SourceRef;
   excerpt: string;
   kind: 'runbook' | 'policy' | 'guide';
-  // 0..1 match strength, as for incidents and resolutions (panel relevance indicator, MCP relevance).
+  // 0..1 keyword match strength, as for incidents and resolutions (panel relevance indicator, MCP relevance).
   relevance: number;
 };
 
@@ -121,7 +122,7 @@ export type ViewerBundle = Omit<ContextBundle, 'summary'> & {
 // What started a build or pass. No account ID: nothing read it, and storing one would make Outrider store user
 // personal data (Atlassian's user privacy guide for Forge apps). Removed 2026-11-24.
 export type ActorContext = {
-  source: 'jira-event' | 'confluence-event' | 'unknown';
+  source: 'jira-event' | 'confluence-event' | 'reconcile' | 'unknown';
 };
 
 export type BuildJob =
@@ -147,6 +148,13 @@ export type BuildJob =
       buildId: string;
       requestedAt: string;
       actor: ActorContext;
+    }
+  | {
+      // One reconciliation run (spec §8.7, pipeline/reconcile.ts), queued by the hourly reconcile sweep.
+      kind: 'reconcile';
+      buildId: string;
+      requestedAt: string;
+      actor: ActorContext;
     };
 
 export type BuildStatus = {
@@ -162,6 +170,9 @@ export type BuildStatus = {
     | 'enqueue_failed';
   actor: ActorContext;
   error?: string;
+  // Set only on builds queued by reconciliation: 1 for the first repair. A ticket event leaves it out, which
+  // resets the count (domain/reconcile.ts).
+  attempt?: number;
 };
 
 

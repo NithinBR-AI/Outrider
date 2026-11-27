@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   // Number of visibility checks that succeed before every later one fails; -1 for never.
   failAfterChecks: -1,
   checks: 0,
+  // When set, listing keys under this prefix fails, as when KVS is unavailable.
+  queryFailsFor: '',
   handlers: {} as Record<string, (req: unknown) => unknown>,
 }));
 
@@ -35,7 +37,10 @@ vi.mock('@forge/kvs', () => ({
         where: (_p: string, c: { value: string }) => ((prefix = c.value), builder),
         limit: () => builder,
         cursor: () => builder,
-        getMany: async () => ({ results: [...h.store.entries()].filter(([k]) => k.startsWith(prefix)).map(([key, value]) => ({ key, value: structuredClone(value) })) }),
+        getMany: async () => {
+          if (h.queryFailsFor && prefix.startsWith(h.queryFailsFor)) throw new Error('kvs-unavailable');
+          return { results: [...h.store.entries()].filter(([k]) => k.startsWith(prefix)).map(([key, value]) => ({ key, value: structuredClone(value) })) };
+        },
       };
       return builder;
     },
@@ -67,7 +72,7 @@ vi.mock('../../src/adapters/twg', () => ({ teamsForProjects: async (keys: string
 import { runClusterPass } from '../../src/pipeline/clusterPass';
 import { getPanelContext, PanelState } from '../../src/resolvers/panel';
 import { getEmergingIncidents } from '../../src/resolvers/mcp';
-import { CLUSTER_CHECK_FAILED, dismissSignal } from '../../src/resolvers/signals';
+import { CLUSTER_CHECK_FAILED, CLUSTER_RECORDS_UNAVAILABLE, DISMISS_LOCK_ATTEMPTS, dismissSignal } from '../../src/resolvers/signals';
 import { noSignalsNote, SIGNALS_NOTE } from '../../src/mcp/tools';
 
 const NOW = new Date('2026-11-23T10:30:00.000Z');
@@ -102,6 +107,7 @@ beforeEach(() => {
   h.checkFails = false;
   h.failAfterChecks = -1;
   h.checks = 0;
+  h.queryFailsFor = '';
   h.canSee = { userA: ['ITS-1', 'ITS-2', 'ITS-3', 'ITS-4', 'ITS-5'], userB: ['ITS-1', 'ITS-2', 'ITS-3', 'ITS-4'] };
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -210,6 +216,17 @@ describe('get-emerging-incidents applies the same rules as the panel (authorizat
     expect(await getEmergingIncidents({}, caller('userA'))).toEqual({ signals: [], signalsNote: noSignalsNote(5, 90, true), partial: true, failures: [CLUSTER_CHECK_FAILED] });
   });
 
+  it('reports unreadable signal records as partial, never as a clean "no signals" (found in review)', async () => {
+    await runClusterPass(job, NOW);
+    h.queryFailsFor = 'cluster:';
+    expect(await getEmergingIncidents({}, caller('userA'))).toEqual({
+      signals: [], signalsNote: noSignalsNote(5, 90, true), partial: true, failures: [CLUSTER_RECORDS_UNAVAILABLE],
+    });
+    const p = await panel('userA');
+    expect(p.state).toBe('complete');
+    expect('bundle' in p && p.bundle).toMatchObject({ partial: true, failures: [CLUSTER_RECORDS_UNAVAILABLE], emergingSignals: [] });
+  });
+
   it('needs a caller, a valid project key, and a project that gets context', async () => {
     expect(await getEmergingIncidents({}, {})).toMatchObject({ status: 'invalid-request' });
     expect(await getEmergingIncidents({ projectKey: 'not a key' }, caller('userA'))).toMatchObject({ status: 'invalid-request' });
@@ -236,6 +253,23 @@ describe('Dismiss (§14.7 resolved by a human)', () => {
     expect(signalsOf(await panel('userA'))).toEqual([]);
     await runClusterPass(job, NOW);
     expect(records()).toHaveLength(1);
+  });
+
+  it('waits for a clustering pass that holds the lock, so the pass cannot write the signal back (found in review)', async () => {
+    await runClusterPass(job, NOW);
+    h.viewer = 'userA';
+    const passLock = { buildId: 'pass-2', ownerToken: 'pass-token', acquiredAt: NOW.toISOString(), expiresAt: new Date(NOW.getTime() + 60_000).toISOString() };
+    h.store.set('lock:cluster-pass_ITS', passLock);
+    expect(await dismissSignal('ITS-1', records()[0].signalId, NOW, 0)).toEqual({ ok: false });
+    expect(records()[0].lifecycle).toBe('raised');
+    expect(h.store.get('lock:cluster-pass_ITS')).toEqual(passLock); // the pass's lock is untouched
+    expect(DISMISS_LOCK_ATTEMPTS).toBeGreaterThan(1);
+    h.store.delete('lock:cluster-pass_ITS'); // the pass finished
+    expect(await dismissSignal('ITS-1', records()[0].signalId, NOW, 0)).toEqual({ ok: true });
+    expect(records()[0].lifecycle).toBe('resolved');
+    expect(h.store.has('lock:cluster-pass_ITS')).toBe(false); // released again
+    await runClusterPass(job, NOW); // a later pass leaves the dismissal in place
+    expect(records()[0].lifecycle).toBe('resolved');
   });
 
   it('refuses bad input, unknown signals, tickets outside the signal, and a failed check', async () => {

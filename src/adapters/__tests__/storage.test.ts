@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   failSetsAfter: [] as Error[],
 }));
 vi.mock('@forge/kvs', () => ({
+  WhereConditions: { beginsWith: (value: string) => ({ condition: 'BEGINS_WITH', value }) },
   kvs: {
     get: async (key: string) => h.store.get(key),
     set: async (key: string, value: unknown, options?: Record<string, unknown>) => {
@@ -26,12 +27,34 @@ vi.mock('@forge/kvs', () => ({
       h.store.set(key, value);
     },
     delete: async (key: string) => void h.store.delete(key),
+    // Begins-with query with limit and cursor; the cursor is the index of the next matching key.
+    query: () => {
+      let prefix = '';
+      let limit = 100;
+      let start = 0;
+      const builder = {
+        where: (_p: string, c: { value: string }) => ((prefix = c.value), builder),
+        limit: (n: number) => ((limit = n), builder),
+        cursor: (c: string) => ((start = Number(c)), builder),
+        getMany: async () => {
+          const all = [...h.store.entries()].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1));
+          const end = start + limit;
+          return { results: all.slice(start, end).map(([key, value]) => ({ key, value })), nextCursor: end < all.length ? String(end) : undefined };
+        },
+      };
+      return builder;
+    },
   },
 }));
 
 import {
   acquireLock,
+  deleteTicketRecords,
   getBundle,
+  getReconcileCheckpoint,
+  listBundlePage,
+  listStatusPage,
+  putReconcileCheckpoint,
   getLock,
   getStatus,
   holdsLock,
@@ -71,6 +94,32 @@ describe('bundle and status keys', () => {
   it('returns undefined for unknown tickets', async () => {
     expect(await getStatus('ITS-404')).toBeUndefined();
     expect(await getBundle('ITS-404')).toBeUndefined();
+  });
+});
+
+describe('reconciliation records', () => {
+  it('lists statuses and bundles a page at a time, with a cursor for the next page', async () => {
+    for (const n of [1, 2, 3]) {
+      await putStatus(status({ ticketKey: `ITS-${n}` }));
+      await putBundle({ ticketKey: `ITS-${n}`, ticketFingerprint: `f${n}`, incidents: [] } as unknown as ContextBundle);
+    }
+    const first = await listStatusPage(2);
+    expect(first.values.map((s) => s.ticketKey)).toEqual(['ITS-1', 'ITS-2']);
+    const second = await listStatusPage(2, first.nextCursor);
+    expect(second.values.map((s) => s.ticketKey)).toEqual(['ITS-3']);
+    expect(second.nextCursor).toBeUndefined();
+    const bundles = await listBundlePage(5);
+    expect(bundles.values).toEqual([1, 2, 3].map((n) => ({ ticketKey: `ITS-${n}`, ticketFingerprint: `f${n}` })));
+  });
+
+  it("deletes a ticket's bundle and status, and keeps the checkpoint", async () => {
+    await putStatus(status());
+    await putBundle({ ticketKey: 'ITS-1' } as ContextBundle);
+    await deleteTicketRecords('ITS-1');
+    expect(h.store.size).toBe(0);
+    expect(await getReconcileCheckpoint()).toEqual({});
+    await putReconcileCheckpoint({ statusCursor: '2' });
+    expect(await getReconcileCheckpoint()).toEqual({ statusCursor: '2' });
   });
 });
 

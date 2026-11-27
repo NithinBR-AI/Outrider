@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   visibilityFails: false,
   checks: [] as string[][],
   put: vi.fn(),
+  lockHeld: false,
 }));
 
 vi.mock('../../adapters/storage', () => ({
@@ -18,6 +19,8 @@ vi.mock('../../adapters/storage', () => ({
     return structuredClone(h.records[projectKey] ?? []);
   },
   putClusterRecord: h.put,
+  acquireLock: async (key: string) => (h.lockHeld ? undefined : { key }),
+  releaseLock: async () => true,
 }));
 vi.mock('../../adapters/jira', () => ({
   visibleIssueKeys: async (keys: string[]) => {
@@ -27,7 +30,7 @@ vi.mock('../../adapters/jira', () => ({
   },
 }));
 
-import { CLUSTER_CHECK_FAILED, dismissSignal, signalsForProjects, signalsForTicket } from '../signals';
+import { CLUSTER_CHECK_FAILED, CLUSTER_RECORDS_UNAVAILABLE, dismissSignal, signalsForProjects, signalsForTicket } from '../signals';
 
 const rec = (signalId: string, keys: string[], over: Partial<ClusterRecord> = {}): ClusterRecord => ({
   storageKey: `cluster:ITS:${signalId}`,
@@ -58,6 +61,7 @@ afterEach(() => vi.useRealTimers());
 beforeEach(() => {
   h.records = {};
   h.listFails = false;
+  h.lockHeld = false;
   h.visible = new Set(['ITS-1', 'ITS-2', 'ITS-3']);
   h.visibilityFails = false;
   h.checks = [];
@@ -103,9 +107,9 @@ describe('signalsForTicket', () => {
     expect(await signalsForTicket('ITS-1')).toEqual({ signals: [], failure: CLUSTER_CHECK_FAILED });
   });
 
-  it('shows nothing, without a failure, when the records cannot be listed', async () => {
+  it('reports records that cannot be listed as a failure, never as no signals', async () => {
     h.listFails = true;
-    expect(await signalsForTicket('ITS-1')).toEqual({ signals: [] });
+    expect(await signalsForTicket('ITS-1')).toEqual({ signals: [], failure: CLUSTER_RECORDS_UNAVAILABLE });
   });
 });
 
@@ -134,6 +138,13 @@ describe('dismissSignal', () => {
     expect(await dismissSignal('ITS-1', 'a')).toEqual({ ok: false });
     h.visibilityFails = true;
     expect(await dismissSignal('ITS-1', 'b')).toEqual({ ok: false });
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('refuses, writing nothing, while a clustering pass holds the project lock', async () => {
+    h.records.ITS = [rec('b', ['ITS-1', 'ITS-2'])];
+    h.lockHeld = true;
+    expect(await dismissSignal('ITS-1', 'b', new Date(), 0)).toEqual({ ok: false });
     expect(h.put).not.toHaveBeenCalled();
   });
 

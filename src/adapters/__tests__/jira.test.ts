@@ -33,7 +33,8 @@ vi.mock('@forge/api', () => {
   };
 });
 
-import { clearSiteBaseCache, getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, siteBaseUrl, visibleIssueKeys } from '../jira';
+import { clearSiteBaseCache, currentTickets, getTicket, MAX_SECTION_CANDIDATES, searchIncidents, searchResolutions, liveSourceTexts, siteBaseUrl, ticketExists, visibleIssueKeys } from '../jira';
+import { ticketFingerprint } from '../../domain/extract';
 import { textQuery } from '../../domain/query';
 import { RetrievalSettings } from '../../domain/settings';
 
@@ -145,6 +146,37 @@ describe('getTicket', () => {
   it('throws a short error code when Jira fails', async () => {
     mock.handler = () => ({ status: 404, json: {} });
     await expect(getTicket('ITS-404', SETTINGS)).rejects.toThrow('jira-get-404');
+  });
+});
+
+describe('currentTickets and ticketExists (reconciliation)', () => {
+  it('fetches tickets in one key-in search as the app, normalized exactly like getTicket, so fingerprints agree', async () => {
+    mock.handler = (path: string, body?: { jql?: string }) => {
+      if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: { issues: body?.jql?.includes('ITS-6265') ? [fixture.ticket] : [] } };
+      return demoSite()(path, body);
+    };
+    const single = await getTicket('ITS-6265', SETTINGS);
+    mock.calls = [];
+    const many = await currentTickets(['ITS-6265', 'ITS-6265', 'not a key', 'ITS-404'], SETTINGS);
+    expect([...many.keys()]).toEqual(['ITS-6265']);
+    expect(ticketFingerprint(many.get('ITS-6265')!)).toBe(ticketFingerprint(single));
+    expect(mock.calls).toHaveLength(1);
+    expect(mock.calls[0]).toMatchObject({ as: 'app', body: { jql: 'key in (ITS-6265, ITS-404)', maxResults: 2 } });
+  });
+
+  it('makes no call for no keys, and throws when the search fails', async () => {
+    mock.handler = demoSite({ failSearch: true });
+    mock.calls = [];
+    expect((await currentTickets([], SETTINGS)).size).toBe(0);
+    expect(mock.calls).toHaveLength(0);
+    await expect(currentTickets(['ITS-1'], SETTINGS)).rejects.toThrow('jira-search-500');
+  });
+
+  it('says a ticket is gone only on a 404, and throws on any other failure', async () => {
+    mock.handler = (path: string) => (path.includes('ITS-6265') ? { status: 200, json: {} } : path.includes('ITS-503') ? { status: 503, json: {} } : { status: 404, json: {} });
+    expect(await ticketExists('ITS-6265')).toBe(true);
+    expect(await ticketExists('ITS-404')).toBe(false);
+    await expect(ticketExists('ITS-503')).rejects.toThrow('jira-get-503');
   });
 });
 

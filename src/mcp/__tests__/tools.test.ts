@@ -19,7 +19,7 @@ const SETTINGS = { bundleProjects: ['ITS'], sourceProjects: ['ITS', 'ITO'], affe
 vi.mock('../../adapters/twg', () => ({ teamsForProjects: async (keys: string[]) => ({ teams: new Map(keys.map((key) => [key, []])), failed: [] }) }));
 vi.mock('../../adapters/jira', () => ({ visibleIssueKeys: h.visibleIssueKeys, getTicket: h.getTicket, searchIncidents: h.searchIncidents, searchResolutions: h.searchResolutions }));
 vi.mock('../../adapters/settings', () => ({ getSettings: h.getSettings }));
-vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus }));
+vi.mock('../../adapters/storage', () => ({ getBundle: h.getBundle, getStatus: h.getStatus, listClusterRecords: async () => [] }));
 vi.mock('../../pipeline/enqueue', () => ({ enqueueTicketBuild: h.enqueueTicketBuild }));
 
 import {

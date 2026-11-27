@@ -64,7 +64,9 @@ call and return at most 5 results.
 
 ### `find-related-incidents` and `find-similar-resolutions`
 
-`{ incidents: [...] }` or `{ resolutions: [...] }`, each with `relevance` from 0 to 1. An empty list comes with a
+`{ incidents: [...] }` or `{ resolutions: [...] }`, each with `relevance` from 0 to 1: the share of the ticket's
+distinctive words the item contains. The list is already in ranked order, which also uses embeddings, so don't re-sort
+by `relevance`. An empty list comes with a
 `note` saying nothing was found that this user can see, in the projects Outrider searches. Free-text search is
 keyword-based: a one-word query scores every hit as a full match, so ask for a few more words of symptoms when the
 user gives only one.
@@ -91,6 +93,7 @@ When `partial` is `true`, part of the answer could not be checked, and that part
 | `twg:unavailable` | Teams could not be checked at all; say teams could not be checked, not that there are none |
 | `twg:partial` | Some projects' teams could not be checked; the teams listed are real, but there may be more |
 | `jira-incidents`, `jira-resolutions` | A live search failed; say the search could not be completed |
+| `cluster-records-unavailable` | Emerging-incident records could not be read for some project; say signals could not be checked, not that there are none |
 
 ## Good answers
 

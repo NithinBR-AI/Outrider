@@ -156,6 +156,11 @@ export function decodeClusterKey(key: string): KeyParts | undefined {
 
 /** The key prefix for one project's records (KVS begins-with query). */
 export const clusterKeyPrefix = (projectKey: string): string => `cluster:${enc(projectKey)}:`;
+/**
+ * Lock key for a project's clustering pass, also taken by Dismiss so the two never overwrite each other's record.
+ * Distinct from every ticket key (which always contains a dash and digits).
+ */
+export const clusterLockKey = (projectKey: string) => `cluster-pass_${projectKey}`;
 
 // ---- Grouping (§14.3) ----
 

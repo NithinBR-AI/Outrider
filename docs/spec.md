@@ -3,7 +3,7 @@
 **Positioning:** An evidence-gated context engine for service operations.
 **Status:** MVP specification, written before implementation and then updated with each step's decisions
 
-> **How to read this document.** It was written before implementation, then updated as each step was built: the "Decisions made during implementation" sections record where reality changed the plan, with measurements. Some parts were not built (for example the Confluence index and request clustering). The [README](../README.md) states what the submission actually does. Personal details were removed for publication.
+> **How to read this document.** It was written before implementation, then updated as each step was built: the "Decisions made during implementation" sections record where reality changed the plan, with measurements. Some parts were not built: the Confluence index (Confluence is searched live instead) and the full reindex trigger; reconciliation was later built on its own hourly trigger. Request clustering was built in step 13. The [README](../README.md) states what the submission actually does. Personal details were removed for publication.
 
 ---
 

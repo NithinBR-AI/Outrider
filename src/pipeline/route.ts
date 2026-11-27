@@ -3,6 +3,7 @@
 import { BuildJob } from '../domain/types';
 import { buildTicketBundle } from './buildTicket';
 import { runClusterPass } from './clusterPass';
+import { runReconcile } from './reconcile';
 
 /** Runtime check for a queue body. The queue is typed, but a consumer must not trust its input. */
 export function isBuildJob(value: unknown): value is BuildJob {
@@ -13,6 +14,7 @@ export function isBuildJob(value: unknown): value is BuildJob {
   if (v.kind === 'jira-ticket') return typeof v.ticketKey === 'string';
   if (v.kind === 'confluence-page') return typeof v.contentId === 'string' && (v.operation === 'upsert' || v.operation === 'delete');
   if (v.kind === 'cluster-pass') return typeof v.projectKey === 'string';
+  if (v.kind === 'reconcile') return true;
   return false;
 }
 
@@ -23,6 +25,8 @@ export async function handleJob(job: BuildJob): Promise<void> {
 
     case 'cluster-pass':
       return runClusterPass(job);
+    case 'reconcile':
+      return runReconcile(job).then(() => undefined);
     case 'confluence-page':
       // Confluence indexing is step 10. No Confluence events are subscribed yet, so this
       // branch is unreachable today; it exists because the job union already includes it.

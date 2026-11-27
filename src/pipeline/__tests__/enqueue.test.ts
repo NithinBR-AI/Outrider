@@ -22,7 +22,7 @@ vi.mock('@forge/events', () => ({
   },
 }));
 
-import { BUILD_QUEUE_KEY, CLUSTER_PASS_DELAY_SECONDS, enqueueTicketBuild, LOCK_RETRY_DELAY_SECONDS, onClusterSweep, onJiraIssueEvent, requeueClusterJob, requeueTicketJob } from '../enqueue';
+import { BUILD_QUEUE_KEY, CLUSTER_PASS_DELAY_SECONDS, enqueueTicketBuild, LOCK_RETRY_DELAY_SECONDS, onClusterSweep, onJiraIssueEvent, onReconcileSweep, requeueClusterJob, requeueTicketJob } from '../enqueue';
 import { BuildStatus } from '../../domain/types';
 
 const statusOf = (key: string) => h.store.get(`status:${key}`) as BuildStatus | undefined;
@@ -35,6 +35,21 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+describe('reconciliation', () => {
+  it('the hourly sweep queues one reconcile run', async () => {
+    await onReconcileSweep();
+    expect(h.push).toHaveBeenCalledTimes(1);
+    expect(h.push.mock.calls[0][0].body).toMatchObject({ kind: 'reconcile', actor: { source: 'reconcile' } });
+  });
+
+  it('a repair build records its attempt; a ticket event records none, which resets the count', async () => {
+    await enqueueTicketBuild('ITS-1', { source: 'reconcile' }, 2);
+    expect(statusOf('ITS-1')).toMatchObject({ status: 'queued', attempt: 2 });
+    await onJiraIssueEvent({ eventType: 'avi:jira:updated:issue', issue: { key: 'ITS-1' } });
+    expect(statusOf('ITS-1')).not.toHaveProperty('attempt');
+  });
 });
 
 describe('onJiraIssueEvent', () => {

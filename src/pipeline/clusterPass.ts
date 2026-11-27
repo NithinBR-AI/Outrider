@@ -8,7 +8,7 @@
 // 5. Write the changed records, delete long-ended ones, release the lock.
 // It never writes to Jira: a signal recommends investigation and nothing else (§14.10).
 import { randomUUID } from 'crypto';
-import { reconcileClusters, staleRecords, withDisplayNames } from '../domain/cluster';
+import { clusterLockKey, reconcileClusters, staleRecords, withDisplayNames } from '../domain/cluster';
 import { clusterConfig, SiteSettings } from '../domain/settings';
 import { openRequestsForClustering } from '../adapters/clusterSource';
 import { getSettings } from '../adapters/settings';
@@ -25,8 +25,7 @@ const LOOKBACK_MARGIN_MINUTES = 5;
 export const clusteringEnabled = (settings: SiteSettings | undefined): settings is SiteSettings =>
   !!settings && (!!settings.affectedServicesField || !!settings.clusterEntityField);
 
-/** Lock key for a project's pass; distinct from every ticket key (which always contains a dash and digits). */
-export const clusterLockKey = (projectKey: string) => `cluster-pass_${projectKey}`;
+export { clusterLockKey } from '../domain/cluster';
 
 export async function runClusterPass(job: ClusterJob, now: Date = new Date()): Promise<void> {
   const { projectKey } = job;

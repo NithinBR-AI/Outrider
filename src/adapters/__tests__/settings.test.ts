@@ -166,7 +166,7 @@ describe('Confluence spaces (step 10)', () => {
     h.handler = withSpaces;
     expect(await saveSettings({ ...VALID, confluenceSpaces: ['ITO', 'HR'] })).toEqual({
       ok: false,
-      message: "Confluence space HR doesn't exist or Outrider can't see it. Add Outrider as a member of that space, then try again.",
+      message: "Confluence space HR doesn't exist or Outrider can't see it. Open the space's settings in Confluence, choose Users, then Add people and agents, and add both Outrider entries with a role that can view pages. Then try again.",
     });
     expect(h.store.has(SETTINGS_KEY)).toBe(false);
   });

@@ -38,10 +38,10 @@ export async function requeueTicketJob(job: Extract<BuildJob, { kind: 'jira-tick
 }
 
 /** Records a queued status for a new build and pushes the job. Shared by events and future callers. */
-export async function enqueueTicketBuild(ticketKey: string, actor: ActorContext): Promise<{ buildId: string; requestedAt: string }> {
+export async function enqueueTicketBuild(ticketKey: string, actor: ActorContext, attempt?: number): Promise<{ buildId: string; requestedAt: string }> {
   const buildId = randomUUID();
   const requestedAt = new Date().toISOString();
-  await putStatus({ ticketKey, buildId, requestedAt, status: 'queued', actor });
+  await putStatus({ ticketKey, buildId, requestedAt, status: 'queued', actor, ...(attempt !== undefined ? { attempt } : {}) });
   try {
     await queue.push({ body: { kind: 'jira-ticket', ticketKey, buildId, requestedAt, actor } });
   } catch (err) {
@@ -74,6 +74,12 @@ export async function onClusterSweep(): Promise<void> {
   if (!settings || (!settings.affectedServicesField && !settings.clusterEntityField)) return;
   for (const projectKey of settings.bundleProjects) await enqueueClusterPass(projectKey, { source: 'unknown' }, 0);
   console.log(`cluster sweep queued ${settings.bundleProjects.length} pass(es)`);
+}
+
+/** Hourly scheduled trigger (manifest: reconcile-sweep): queues one reconciliation run (pipeline/reconcile.ts). */
+export async function onReconcileSweep(): Promise<void> {
+  await queue.push({ body: { kind: 'reconcile', buildId: randomUUID(), requestedAt: new Date().toISOString(), actor: { source: 'reconcile' } } });
+  console.log('reconcile sweep queued 1 run');
 }
 
 export async function onJiraIssueEvent(event: JiraIssueEvent): Promise<void> {

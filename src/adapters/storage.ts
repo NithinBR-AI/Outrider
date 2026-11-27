@@ -116,6 +116,40 @@ export async function deleteClusterRecord(storageKey: string): Promise<void> {
   await kvs.delete(storageKey);
 }
 
+// ---- Reconciliation (pipeline/reconcile.ts) ----
+
+/** One page of records under a key prefix, with the cursor for the next page (undefined at the end). */
+async function page<T>(prefix: string, limit: number, cursor?: string): Promise<{ values: T[]; nextCursor?: string }> {
+  let q = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(limit);
+  if (cursor) q = q.cursor(cursor);
+  const res = await q.getMany<T>();
+  return { values: res.results.map((r) => r.value), nextCursor: res.nextCursor };
+}
+
+export const listStatusPage = (limit: number, cursor?: string) => page<BuildStatus>('status:', limit, cursor);
+
+/** One page of bundles, reduced to what reconciliation compares. */
+export async function listBundlePage(limit: number, cursor?: string): Promise<{ values: Pick<ContextBundle, 'ticketKey' | 'ticketFingerprint'>[]; nextCursor?: string }> {
+  const p = await page<ContextBundle>('bundle:', limit, cursor);
+  return { values: p.values.map((b) => ({ ticketKey: b.ticketKey, ticketFingerprint: b.ticketFingerprint })), nextCursor: p.nextCursor };
+}
+
+/** Removes a deleted ticket's bundle and build status. */
+export async function deleteTicketRecords(ticketKey: string): Promise<void> {
+  await kvs.delete(bundleKey(ticketKey));
+  await kvs.delete(statusKey(ticketKey));
+}
+
+/** Where the last reconciliation run stopped, so the next run continues from there. */
+export type ReconcileCheckpoint = { statusCursor?: string; bundleCursor?: string };
+const CHECKPOINT_KEY = 'reconcile:checkpoint';
+export async function getReconcileCheckpoint(): Promise<ReconcileCheckpoint> {
+  return (await kvs.get<ReconcileCheckpoint>(CHECKPOINT_KEY)) ?? {};
+}
+export async function putReconcileCheckpoint(checkpoint: ReconcileCheckpoint): Promise<void> {
+  await kvs.set(CHECKPOINT_KEY, checkpoint);
+}
+
 export async function getBundle(ticketKey: string): Promise<ContextBundle | undefined> {
   return kvs.get<ContextBundle>(bundleKey(ticketKey));
 }

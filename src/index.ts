@@ -2,5 +2,5 @@
 export { panelResolver } from './resolvers/panel';
 export { adminResolver } from './resolvers/admin';
 export { getTicketContext, findRelatedIncidents, findSimilarResolutions, getEmergingIncidents } from './resolvers/mcp';
-export { onJiraIssueEvent, onClusterSweep } from './pipeline/enqueue';
+export { onJiraIssueEvent, onClusterSweep, onReconcileSweep } from './pipeline/enqueue';
 export { buildJob } from './pipeline/jobs';

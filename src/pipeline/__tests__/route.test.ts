@@ -2,7 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const buildTicketBundle = vi.hoisted(() => vi.fn());
+const runReconcile = vi.hoisted(() => vi.fn());
 vi.mock('../buildTicket', () => ({ buildTicketBundle }));
+vi.mock('../reconcile', () => ({ runReconcile }));
 
 import { handleJob, isBuildJob } from '../route';
 import { buildJob } from '../jobs';
@@ -13,6 +15,7 @@ const pageJob: BuildJob = { kind: 'confluence-page', contentId: '4194312', opera
 
 beforeEach(() => {
   buildTicketBundle.mockReset();
+  runReconcile.mockReset().mockResolvedValue({});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -22,6 +25,7 @@ describe('isBuildJob', () => {
     expect(isBuildJob(ticketJob)).toBe(true);
     expect(isBuildJob(pageJob)).toBe(true);
     expect(isBuildJob({ ...pageJob, operation: 'delete' })).toBe(true);
+    expect(isBuildJob({ kind: 'reconcile', buildId: 'r', requestedAt: 't', actor: { source: 'reconcile' } })).toBe(true);
   });
 
   it.each([
@@ -42,6 +46,13 @@ describe('handleJob', () => {
   it('sends jira-ticket jobs to the ticket builder', async () => {
     await handleJob(ticketJob);
     expect(buildTicketBundle).toHaveBeenCalledWith(ticketJob);
+  });
+
+  it('sends reconcile jobs to the reconciliation run', async () => {
+    const job: BuildJob = { kind: 'reconcile', buildId: 'r', requestedAt: 't', actor: { source: 'reconcile' } };
+    await expect(handleJob(job)).resolves.toBeUndefined();
+    expect(runReconcile).toHaveBeenCalledWith(job);
+    expect(buildTicketBundle).not.toHaveBeenCalled();
   });
 
   it('never sends a Confluence page job to Jira ticket retrieval', async () => {
